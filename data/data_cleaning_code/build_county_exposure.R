@@ -1,14 +1,14 @@
 library(readr)
 library(dplyr)
-
-setwd("C:/Users/jubil/OneDrive/Desktop/retaliatory-tariff")
-# turn it into a county level dataset using the crosswalk
-df <- read_csv("./data/tools/export_with_fips.csv")
-# g
-
-library(dplyr)
 library(tidyr)
 library(stringr)
+
+if (!file.exists("./data/tools/export_with_fips.csv")) {
+  stop("Run this script from the project root (open retaliatory-tariff.Rproj first).")
+}
+
+# Turn district-level exports into county-level exports using the FIPS crosswalk.
+df <- read_csv("./data/tools/export_with_fips.csv")
 
 county_level <- df %>%
   # standardize separators and trim whitespace
@@ -36,13 +36,11 @@ county_exports <- county_level %>%
     .groups = "drop"
   )
 
-county_level %>%
-  select(
-    fips_code, Commodity, District, Time,
-    export_value_weighted, n_counties
-  )
-
-write.csv(county_level, "./data/county_exposure/industry_exports/derived/county_level_exports.csv")
+write.csv(
+  county_level,
+  "./data/county_exposure/industry_exports/derived/county_level_exports.csv",
+  row.names = FALSE
+)
 emp_df <- read_csv("./data/county_exposure/employment_by_county/derived/employment_all_establishments.csv")
 
 # merge emp_df and county_level
@@ -71,4 +69,3 @@ merged_df <- merged_df %>%
   )
 district_level_exports_merged <- merged_df
 write.csv(district_level_exports_merged, "./data/county_exposure/industry_exports.csv", row.names = FALSE)
-

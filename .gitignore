@@ -2,9 +2,16 @@
 .Rhistory
 .Rapp.history
 
+# OS-level local files
+.DS_Store
+Thumbs.db
+
 # Session Data files
 .RData
 .RDataTmp
+*.RData
+*.RDS
+*.rds
 
 # User-specific files
 .Ruserdata
@@ -35,6 +42,14 @@ vignettes/*.pdf
 # Temporary files created by R markdown
 *.utf8.md
 *.knit.md
+
+# Legacy spreadsheets / local binary exports
+*.xlsx
+
+# Local scratch plots and ad hoc exports
+Rplot*.png
+export_with_fips
+export_with_fips.csv
 
 # R Environment Variables
 .Renviron

@@ -1,0 +1,10 @@
+check,status,detail
+years_complete_2017_2023,pass,"2017,2018,2019,2020,2021,2022,2023"
+no_duplicate_county_year_rows,pass,0
+county_fips_are_five_digits,pass,0
+exposure_nonnegative,pass,0
+latest_year_county_coverage_ge_3200,pass,3237
+latest_year_vote20_coverage_ge_3000,pass,3096
+latest_year_nonzero_exposure_share_ge_0_90,pass,0.9493
+allocation_ratio_median_ge_0_85,pass,0.9458
+allocation_ratio_p10_ge_0_70,pass,0.8333

@@ -2,39 +2,119 @@
 library(readr)
 library(dplyr)
 library(stringr)
-install.packages("remotes")
-remotes::install_github("insongkim/concordance")
 library(concordance)
 library(scales)
 library(ggplot2)
 library(forcats)
 
-# 1. set wd to be main - change as needed 
-# setwd("/Users/himalbamzai-wokhlu/Desktop/JBW_Wins/retaliatory-tariff")
+if (!file.exists("./data/county_exposure/tariff_by_industry/derived/summarized_trade_retaliations.csv")) {
+  stop("Run this script from the project root (open retaliatory-tariff.Rproj first).")
+}
 
-# 2. load in cleaned data on tariff edxposure by industry 
+# 1. Build robust HS->NAICS map.
+# Primary pass: HS2022-style 6-digit, then 4-digit, then 2-digit.
+# Rescue pass: de-zero malformed tariff lines (e.g., "00390410" -> "390410").
+map_hs_to_naics2017 <- function(hs_digits_vec, hs6_vec) {
+  map_codes <- function(codes) {
+    out <- rep(NA_character_, length(codes))
+    valid <- !is.na(codes) & codes != ""
+    if (any(valid)) {
+      out[valid] <- suppressWarnings(
+        concord_hs_naics(
+          sourcevar = codes[valid],
+          origin = "HS6",
+          destination = "NAICS2017",
+          dest.digit = 6,
+          all = FALSE
+        )
+      )
+    }
+    out
+  }
+
+  hs4_vec <- str_sub(hs6_vec, 1, 4)
+  hs2_vec <- str_sub(hs6_vec, 1, 2)
+
+  naics6_6d <- map_codes(hs6_vec)
+  naics6_4d <- map_codes(hs4_vec)
+  naics6_2d <- map_codes(hs2_vec)
+
+  naics6 <- naics6_6d
+  mapping_level <- if_else(!is.na(naics6_6d), "hs6", NA_character_)
+
+  fill_4d <- is.na(naics6) & !is.na(naics6_4d)
+  naics6[fill_4d] <- naics6_4d[fill_4d]
+  mapping_level[fill_4d] <- "hs4"
+
+  fill_2d <- is.na(naics6) & !is.na(naics6_2d)
+  naics6[fill_2d] <- naics6_2d[fill_2d]
+  mapping_level[fill_2d] <- "hs2"
+
+  hs_trim <- str_replace(hs_digits_vec, "^0+", "")
+  hs_trim[hs_trim == ""] <- NA_character_
+
+  hs_trim6 <- if_else(!is.na(hs_trim) & str_length(hs_trim) >= 6, str_sub(hs_trim, 1, 6), NA_character_)
+  hs_trim4 <- if_else(
+    !is.na(hs_trim) & str_length(hs_trim) >= 4,
+    str_sub(hs_trim, 1, 4),
+    if_else(!is.na(hs_trim) & str_length(hs_trim) == 3, str_pad(hs_trim, width = 4, side = "left", pad = "0"), NA_character_)
+  )
+  hs_trim2 <- if_else(!is.na(hs_trim) & str_length(hs_trim) >= 2, str_sub(hs_trim, 1, 2), NA_character_)
+
+  naics6_trim6 <- map_codes(hs_trim6)
+  naics6_trim4 <- map_codes(hs_trim4)
+  naics6_trim2 <- map_codes(hs_trim2)
+
+  fill_trim6 <- is.na(naics6) & !is.na(naics6_trim6)
+  naics6[fill_trim6] <- naics6_trim6[fill_trim6]
+  mapping_level[fill_trim6] <- "trim_hs6"
+
+  fill_trim4 <- is.na(naics6) & !is.na(naics6_trim4)
+  naics6[fill_trim4] <- naics6_trim4[fill_trim4]
+  mapping_level[fill_trim4] <- "trim_hs4"
+
+  fill_trim2 <- is.na(naics6) & !is.na(naics6_trim2)
+  naics6[fill_trim2] <- naics6_trim2[fill_trim2]
+  mapping_level[fill_trim2] <- "trim_hs2"
+
+  tibble::tibble(naics6 = naics6, mapping_level = mapping_level)
+}
+
+# 2. load in cleaned data on tariff exposure by industry
 tariff_naics <- read_csv("./data/county_exposure/tariff_by_industry/derived/summarized_trade_retaliations.csv") %>%
   rename(
-    hs8    = `Foreign National Tariff Line`,
+    hs8_raw = `Foreign National Tariff Line`,
     tariff = `Current Total Estimated Retaliatory Tariff`,
-    desc   = `Foreign Tariff Line Description`
+    desc = `Foreign Tariff Line Description`
   ) %>%
   mutate(
-    hs8 = str_pad(hs8, width = 8, side = "left", pad = "0"),
-    hs6 = str_sub(hs8, 1, 6),
-    naics6 = concord_hs_naics(
-      sourcevar = hs6,
-      origin = "HS",
-      destination = "NAICS",
-      dest.digit = 6,
-      all = FALSE
-    ),
+    hs_digits = str_replace_all(as.character(hs8_raw), "[^0-9]", ""),
+    hs8 = hs_digits,
+    hs8 = str_pad(str_sub(hs8, 1, 8), width = 8, side = "left", pad = "0"),
+    hs6 = str_sub(hs8, 1, 6)
+  ) %>%
+  bind_cols(map_hs_to_naics2017(.$hs_digits, .$hs6)) %>%
+  mutate(
     naics2 = str_sub(naics6, 1, 2),
     naics3 = str_sub(naics6, 1, 3),
     naics4 = str_sub(naics6, 1, 4)
   )
 
-# 94% match rate 
+mapped_n <- sum(!is.na(tariff_naics$naics6))
+mapped_pct <- round(100 * mapped_n / nrow(tariff_naics), 2)
+message("HS->NAICS mapped ", mapped_n, " / ", nrow(tariff_naics), " rows (", mapped_pct, "%).")
+
+qa_dir <- "./output/tariff_by_industry/qa"
+dir.create(qa_dir, recursive = TRUE, showWarnings = FALSE)
+
+unmatched_hs <- tariff_naics %>%
+  filter(is.na(naics6)) %>%
+  count(hs8_raw, hs8, hs6, desc, sort = TRUE, name = "n_rows")
+
+write.csv(unmatched_hs, file.path(qa_dir, "unmatched_hs_codes.csv"), row.names = FALSE)
+message("Unmatched HS rows: ", nrow(unmatched_hs), " unique HS8 codes. QA file saved to ", qa_dir)
+
+# Persist mapped tariff-by-NAICS dataset.
 write.csv(tariff_naics, "./data/county_exposure/tariff_by_industry/derived/trade_retaliations_by_naics.csv")
 
 # 0) Output directory
@@ -240,7 +320,3 @@ fig6 <- tariff_plot %>%
 save_fig(fig6, "fig6_etr_distribution_boxplot_top_naics2_collapsed_mfg.png", h = 7)
 
 message("Saved figures to: ", out_dir)
-
-
-
-

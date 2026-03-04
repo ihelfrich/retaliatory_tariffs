@@ -1,0 +1,11 @@
+variable,definition
+county_fips,5-digit county FIPS code
+year,Calendar year
+county_tariff_exposure_mean,County tariff exposure index using mean sector tariff rates
+county_tariff_exposure_p90,County tariff exposure index using p90 sector tariff rates
+county_tariff_exposure_per_worker,Mean exposure index divided by county total employment
+tariffed_emp_share,Share of county employment in sectors with mapped tariff lines
+gop_share_20,County GOP two-party vote share in 2020
+gop_share_24,County GOP two-party vote share in 2024
+swingness_20,County electoral competitiveness in 2020 (1 - absolute margin)
+political_salience_weighted_exposure,Exposure percentile multiplied by competitiveness

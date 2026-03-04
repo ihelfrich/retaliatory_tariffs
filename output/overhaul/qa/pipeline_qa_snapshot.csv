@@ -1,0 +1,17 @@
+metric,value
+cbp_raw_rows,379915
+cbp_us_raw_rows,147
+cbp_years,7
+county_industry_emp_rows,357203
+us_sector_emp_missing_rows,0
+county_unique_in_panel,3253
+exports_annual_rows,28
+tariff_mapped_naics2_rows,4
+county_panel_rows,22659
+latest_year,2023
+latest_year_counties,3237
+latest_year_with_vote20,3096
+latest_year_nonzero_exposure,3073
+allocation_ratio_median,0.945827599070716
+cor_log_exposure_gop20_latest,-0.24117793077807495
+cor_log_exposure_swing20_latest,0.27751242236890095

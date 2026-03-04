@@ -1,0 +1,14 @@
+metric,value
+exports_raw_rows,100259
+exports_county_rows,949
+employment_rows_2023,54056
+employment_unique_counties,3220
+tariff_rows,8172
+tariff_rows_mapped,8154
+tariff_mapping_rate,0.997797
+tariff_unmatched_rows,18
+exposure_component_rows,949
+exposure_components_with_emp,506
+exposure_components_with_tariff,447
+exposure_components_matched_all,378
+county_exposure_rows,159

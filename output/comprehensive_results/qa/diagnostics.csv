@@ -1,0 +1,12 @@
+metric,value
+panel_rows_2023,50836
+panel_unique_counties,3213
+tariff_joined_sector_rows,50836
+analysis_rows,3213
+analysis_rows_with_votes24,3108
+analysis_rows_with_nonzero_exposure,3063
+median_exposure,41604118383.805534
+median_exposure_per_worker,5358464.534414276
+cor_log_exposure_gop_share_24,-0.07484184930266845
+cor_log_exposure_swingness_24,0.13734051331915006
+reg_n,3108

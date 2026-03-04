@@ -1,0 +1,4 @@
+specification,observations,r_squared
+Latest year baseline,3096,0.0959153064355441
+Latest year + state FE,3096,0.2113253106126394
+Panel + year FE + state FE,21677,0.22502374287450713

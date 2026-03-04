@@ -40,6 +40,16 @@ where:
 Optional one-shot runner:
 `source("run_all.R")`
 
+## Portable local run (fresh clone)
+
+From a terminal, this now works without any machine-specific paths:
+
+1. `Rscript setup_project.R`
+2. `Rscript run_all.R`
+3. Optional preflight only: `Rscript run_all.R --check-only`
+
+Core scripts depend on standard project files (`.R`, `.csv`, `.txt`, `.json`, `.md`) and do not require local `.RData` or `.xlsx` artifacts.
+
 ## Optional campaign-finance extension
 
 Run:

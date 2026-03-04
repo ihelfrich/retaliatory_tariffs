@@ -1,11 +1,38 @@
 args <- commandArgs(trailingOnly = TRUE)
 check_only <- "--check-only" %in% args
 
-options(repos = c(CRAN = "https://cloud.r-project.org"))
+resolve_project_root <- function() {
+  if (file.exists("README.md") && dir.exists("data/data_cleaning_code")) {
+    return(normalizePath(".", winslash = "/", mustWork = TRUE))
+  }
 
-if (!file.exists("README.md") || !dir.exists("data/data_cleaning_code")) {
-  stop("Run this from the project root (open retaliatory-tariff.Rproj first).")
+  script_file <- NULL
+  cli_args <- commandArgs(trailingOnly = FALSE)
+  file_flag <- grep("^--file=", cli_args, value = TRUE)
+  if (length(file_flag) > 0) {
+    script_file <- sub("^--file=", "", file_flag[1])
+  } else {
+    frame_file <- tryCatch(sys.frames()[[1]]$ofile, error = function(e) NULL)
+    if (!is.null(frame_file)) {
+      script_file <- frame_file
+    }
+  }
+
+  if (!is.null(script_file)) {
+    script_dir <- dirname(normalizePath(script_file, winslash = "/", mustWork = TRUE))
+    if (file.exists(file.path(script_dir, "README.md")) &&
+        dir.exists(file.path(script_dir, "data", "data_cleaning_code"))) {
+      return(script_dir)
+    }
+  }
+
+  stop("Could not locate project root. Run setup_project.R from the repository root.")
 }
+
+project_root <- resolve_project_root()
+setwd(project_root)
+
+options(repos = c(CRAN = "https://cloud.r-project.org"))
 
 cran_packages <- c(
   "readr",
@@ -26,7 +53,8 @@ cran_packages <- c(
   "broom",
   "sandwich",
   "lmtest",
-  "remotes"
+  "remotes",
+  "tibble"
 )
 
 installed <- rownames(installed.packages())
@@ -51,13 +79,6 @@ if (!requireNamespace("concordance", quietly = TRUE)) {
 if (check_only) {
   message("Dependency check complete.")
 } else {
-  message("Setup complete. You can now run:")
-  message("  source('data/data_cleaning_code/build_county_exposure.R')")
-  message("  source('data/data_cleaning_code/clean_tariff_retaliation.R')")
-  message("  source('code/comprehensive_results_geospatial.R')")
-  message("  source('code/overhaul_open_data_panel.R')")
-  message("  source('code/validate_core_outputs.R')")
-  message("  source('code/build_analysis_outputs.R')")
-  message("  source('code/build_site_data.R')")
-  message("  source('code/add_campaign_finance_county_measures.R')  # requires FEC_API_KEY")
+  message("Setup complete. From project root, run:")
+  message("  source('run_all.R')")
 }
