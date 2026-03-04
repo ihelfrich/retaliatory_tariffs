@@ -48,12 +48,28 @@
           <option value="variable_global">Variable global</option>
         </select>
 
+        <label for="mapColorScaleSelect">Color scaling</label>
+        <select id="mapColorScaleSelect">
+          <option value="quantile">Quantile (recommended)</option>
+          <option value="linear">Linear min-max</option>
+        </select>
+
         <label for="mapPaletteSelect">Map palette</label>
         <select id="mapPaletteSelect">
           <option value="teal_amber">Teal - Amber</option>
           <option value="blue_red">Blue - Red</option>
           <option value="forest_gold">Forest - Gold</option>
         </select>
+
+        <label for="mapRenderModeSelect">Map render mode</label>
+        <select id="mapRenderModeSelect">
+          <option value="extruded_3d">3D extruded counties (WebGL)</option>
+          <option value="choropleth_2d">2D county choropleth</option>
+        </select>
+
+        <label for="mapElevationScaleRange">3D elevation scale</label>
+        <input id="mapElevationScaleRange" type="range" min="15000" max="180000" step="5000" value="70000">
+        <div id="mapElevationScaleLabel" class="range-label">3D height scale: 70K</div>
 
         <div class="button-row">
           <button id="resetMapBtn" type="button">Reset map view</button>

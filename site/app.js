@@ -66,7 +66,10 @@ const DEFAULTS = {
   mapVar: "county_tariff_exposure_mean",
   mapTransform: "none",
   mapScaleMode: "variable_year_auto",
+  mapColorScale: "quantile",
   mapPalette: "teal_amber",
+  mapRenderMode: "extruded_3d",
+  mapElevationScale: 70000,
   scatterX: "gop_share_20",
   scatterY: "county_tariff_exposure_mean",
   scatterColor: "swingness_20",
@@ -96,7 +99,11 @@ const dom = {
   mapMetricSelect: document.getElementById("mapMetricSelect"),
   mapTransformSelect: document.getElementById("mapTransformSelect"),
   mapScaleModeSelect: document.getElementById("mapScaleModeSelect"),
+  mapColorScaleSelect: document.getElementById("mapColorScaleSelect"),
   mapPaletteSelect: document.getElementById("mapPaletteSelect"),
+  mapRenderModeSelect: document.getElementById("mapRenderModeSelect"),
+  mapElevationScaleRange: document.getElementById("mapElevationScaleRange"),
+  mapElevationScaleLabel: document.getElementById("mapElevationScaleLabel"),
   resetMapBtn: document.getElementById("resetMapBtn"),
 
   scatterXSelect: document.getElementById("scatterXSelect"),
@@ -144,7 +151,8 @@ const state = {
   countiesGeo: [],
   deck: null,
   viewState: { ...DEFAULT_VIEW_STATE },
-  mapScaleCache: new Map()
+  mapScaleCache: new Map(),
+  mapPaintRevision: 0
 };
 
 const fmt = {
@@ -375,7 +383,10 @@ function readUrlState() {
     mapVar: p.get("map"),
     mapTransform: p.get("map_t"),
     mapScaleMode: p.get("map_scale"),
+    mapColorScale: p.get("map_cscale"),
     mapPalette: p.get("map_palette"),
+    mapRenderMode: p.get("map_mode"),
+    mapElevationScale: p.get("map_elev"),
     scatterX: p.get("sx"),
     scatterY: p.get("sy"),
     scatterColor: p.get("sc"),
@@ -405,8 +416,23 @@ function applyUrlState(queryState) {
   if (queryState.mapScaleMode && validOptionValue(dom.mapScaleModeSelect, queryState.mapScaleMode)) {
     dom.mapScaleModeSelect.value = queryState.mapScaleMode;
   }
+  if (queryState.mapColorScale && validOptionValue(dom.mapColorScaleSelect, queryState.mapColorScale)) {
+    dom.mapColorScaleSelect.value = queryState.mapColorScale;
+  }
   if (queryState.mapPalette && validOptionValue(dom.mapPaletteSelect, queryState.mapPalette)) {
     dom.mapPaletteSelect.value = queryState.mapPalette;
+  }
+  if (queryState.mapRenderMode && validOptionValue(dom.mapRenderModeSelect, queryState.mapRenderMode)) {
+    dom.mapRenderModeSelect.value = queryState.mapRenderMode;
+  }
+  if (queryState.mapElevationScale !== null && queryState.mapElevationScale !== "") {
+    const elev = Number(queryState.mapElevationScale);
+    if (Number.isFinite(elev)) {
+      const min = Number(dom.mapElevationScaleRange.min || 0);
+      const max = Number(dom.mapElevationScaleRange.max || 1000000);
+      const bounded = Math.max(min, Math.min(max, elev));
+      dom.mapElevationScaleRange.value = String(bounded);
+    }
   }
   if (queryState.scatterX && validOptionValue(dom.scatterXSelect, queryState.scatterX)) {
     dom.scatterXSelect.value = queryState.scatterX;
@@ -446,7 +472,10 @@ function syncUrlState() {
   p.set("map", dom.mapMetricSelect.value);
   p.set("map_t", dom.mapTransformSelect.value);
   p.set("map_scale", dom.mapScaleModeSelect.value);
+  p.set("map_cscale", dom.mapColorScaleSelect.value);
   p.set("map_palette", dom.mapPaletteSelect.value);
+  p.set("map_mode", dom.mapRenderModeSelect.value);
+  p.set("map_elev", dom.mapElevationScaleRange.value);
   p.set("sx", dom.scatterXSelect.value);
   p.set("sy", dom.scatterYSelect.value);
   p.set("sc", dom.scatterColorSelect.value);
@@ -681,6 +710,74 @@ function createLegend(minVal, maxVal, paletteName, transformLabel) {
   ].join("");
 }
 
+function createLegendWithScale(minVal, maxVal, paletteName, transformLabel, colorScaleMode, p10, p50, p90) {
+  if (colorScaleMode !== "quantile") {
+    createLegend(minVal, maxVal, paletteName, transformLabel);
+    return;
+  }
+
+  const palette = PALETTES[paletteName] || PALETTES.teal_amber;
+  const stops = palette
+    .map((color, idx) => {
+      const p = (idx / Math.max(palette.length - 1, 1)) * 100;
+      return `rgb(${color[0]} ${color[1]} ${color[2]}) ${p.toFixed(1)}%`;
+    })
+    .join(", ");
+
+  dom.mapLegend.innerHTML = [
+    `<span>p10 ${formatValue(p10)}</span>`,
+    `<span class="legend-gradient" style="background: linear-gradient(90deg, ${stops});"></span>`,
+    `<span>p90 ${formatValue(p90)}</span>`,
+    `<span>(quantile; p50 ${formatValue(p50)} | ${transformLabel})</span>`
+  ].join("");
+}
+
+function lowerBound(sortedValues, target) {
+  let lo = 0;
+  let hi = sortedValues.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sortedValues[mid] < target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function upperBound(sortedValues, target) {
+  let lo = 0;
+  let hi = sortedValues.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sortedValues[mid] <= target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function updateElevationScaleLabel() {
+  const raw = Number(dom.mapElevationScaleRange.value);
+  const value = Number.isFinite(raw) ? raw : DEFAULTS.mapElevationScale;
+  dom.mapElevationScaleLabel.textContent = `3D height scale: ${fmt.short.format(value)}`;
+}
+
+function applyMapCameraMode(renderMode) {
+  if (renderMode === "extruded_3d") {
+    state.viewState = {
+      ...state.viewState,
+      pitch: Math.max(state.viewState.pitch || 0, 42),
+      bearing: Number.isFinite(state.viewState.bearing) ? state.viewState.bearing : -10,
+      zoom: Math.max(state.viewState.zoom || DEFAULT_VIEW_STATE.zoom, 3.3)
+    };
+    return;
+  }
+
+  state.viewState = {
+    ...state.viewState,
+    pitch: 0,
+    bearing: 0
+  };
+}
+
 function mapRangeForVariable(variable, transform, scaleMode, yearRows) {
   if (scaleMode === "variable_year_auto") {
     const transformed = transformSeries(yearRows.map((row) => row[variable]), transform);
@@ -710,6 +807,13 @@ function buildMap() {
   const transform = dom.mapTransformSelect.value;
   const palette = dom.mapPaletteSelect.value;
   const scaleMode = dom.mapScaleModeSelect.value;
+  const colorScaleMode = dom.mapColorScaleSelect.value;
+  const renderMode = dom.mapRenderModeSelect.value;
+  const elevationScaleRaw = Number(dom.mapElevationScaleRange.value);
+  const elevationScale = Number.isFinite(elevationScaleRaw)
+    ? elevationScaleRaw
+    : DEFAULTS.mapElevationScale;
+  updateElevationScaleLabel();
 
   const rows = byYear(year);
   const rowMap = new Map(rows.map((row) => [row.county_fips, row]));
@@ -727,10 +831,45 @@ function buildMap() {
   const maxVal = finiteCount ? Math.max(...finite) : 1;
   const medVal = finiteCount ? median(finite) : null;
 
+  const scaleRows = scaleMode === "variable_global" ? state.panel : rows;
+  const transformedScale = transformSeries(scaleRows.map((row) => row[variable]), transform);
+  const finiteScale = transformedScale.filter((v) => Number.isFinite(v));
+  const sortedScale = [...finiteScale].sort((a, b) => a - b);
   const scale = mapRangeForVariable(variable, transform, scaleMode, rows);
+  const p10 = sortedScale.length ? quantile(sortedScale, 0.1) : null;
+  const p50 = sortedScale.length ? quantile(sortedScale, 0.5) : null;
+  const p90 = sortedScale.length ? quantile(sortedScale, 0.9) : null;
+  const mapPaintRevision = (state.mapPaintRevision += 1);
+  const denom = scale.max - scale.min;
 
   dom.mapTitle.textContent = `County map: ${autoLabel(variable)} (${year})`;
-  createLegend(scale.min, scale.max, palette, transform);
+  createLegendWithScale(scale.min, scale.max, palette, transform, colorScaleMode, p10, p50, p90);
+
+  const colorPositionByFips = new Map();
+  if (colorScaleMode === "quantile" && sortedScale.length > 0) {
+    const nScale = sortedScale.length;
+    rows.forEach((row, idx) => {
+      const val = transformed[idx];
+      if (!Number.isFinite(val)) {
+        colorPositionByFips.set(row.county_fips, null);
+        return;
+      }
+      const lo = lowerBound(sortedScale, val);
+      const hi = upperBound(sortedScale, val);
+      const midRank = lo === hi ? lo : (lo + hi - 1) / 2;
+      const t = nScale > 1 ? midRank / (nScale - 1) : 0.5;
+      colorPositionByFips.set(row.county_fips, t);
+    });
+  } else {
+    rows.forEach((row, idx) => {
+      const val = transformed[idx];
+      if (!Number.isFinite(val)) {
+        colorPositionByFips.set(row.county_fips, null);
+        return;
+      }
+      colorPositionByFips.set(row.county_fips, (val - scale.min) / (denom || 1));
+    });
+  }
 
   dom.mapStats.textContent = [
     `finite ${finiteCount.toLocaleString()} / ${rows.length.toLocaleString()}`,
@@ -739,7 +878,9 @@ function buildMap() {
     `median ${formatValue(medVal)}`,
     `max ${formatValue(maxVal)}`,
     `transform ${transform}`,
-    `scale ${scaleMode}`
+    `scale ${scaleMode}`,
+    `color ${colorScaleMode}`,
+    `mode ${renderMode}`
   ].join(" | ");
 
   if (finiteCount === 0) {
@@ -754,10 +895,18 @@ function buildMap() {
   }
 
   const layer = new deck.GeoJsonLayer({
-    id: "county-layer",
+    id: `county-layer-${mapPaintRevision}`,
     data: state.countiesGeo,
     filled: true,
     stroked: true,
+    extruded: renderMode === "extruded_3d",
+    wireframe: false,
+    material: {
+      ambient: 0.34,
+      diffuse: 0.6,
+      shininess: 36,
+      specularColor: [160, 160, 160]
+    },
     pickable: true,
     autoHighlight: true,
     lineWidthMinPixels: 0.15,
@@ -771,10 +920,26 @@ function buildMap() {
     },
     getFillColor: (feature) => {
       const fips = feature.properties?.__fips;
-      const val = valueByFips.get(fips);
-      if (!Number.isFinite(val)) return [226, 229, 232, 150];
-      const t = (val - scale.min) / (scale.max - scale.min || 1);
+      const t = colorPositionByFips.get(fips);
+      if (!Number.isFinite(t)) return [226, 229, 232, 150];
       return paletteColor(t, palette);
+    },
+    getElevation: (feature) => {
+      if (renderMode !== "extruded_3d") return 0;
+      const fips = feature.properties?.__fips;
+      const t = colorPositionByFips.get(fips);
+      if (!Number.isFinite(t)) return 0;
+      return Math.max(0, t) * elevationScale;
+    },
+    transitions: {
+      getFillColor: 260,
+      getElevation: 260
+    },
+    updateTriggers: {
+      getFillColor: [mapPaintRevision, year, variable, transform, palette, scaleMode, colorScaleMode, scale.min, scale.max, p10, p50, p90],
+      getElevation: [mapPaintRevision, renderMode, elevationScale, year, variable, transform, scaleMode, colorScaleMode, scale.min, scale.max, p10, p50, p90],
+      getLineColor: [state.selectedCountyFips, mapPaintRevision],
+      getLineWidth: [state.selectedCountyFips, mapPaintRevision]
     },
     onClick: (info) => {
       if (!info?.object) return;
@@ -825,6 +990,7 @@ function buildMap() {
         state.viewState = { ...viewState };
       }
     });
+    state.deck.redraw(true);
   }
 }
 
@@ -1634,15 +1800,26 @@ function registerHandlers() {
     dom.mapMetricSelect,
     dom.mapTransformSelect,
     dom.mapScaleModeSelect,
+    dom.mapColorScaleSelect,
     dom.mapPaletteSelect,
+    dom.mapRenderModeSelect,
     dom.scatterXSelect,
     dom.scatterYSelect,
     dom.scatterColorSelect
   ].forEach((el) => {
     el.addEventListener("change", () => {
+      if (el === dom.mapRenderModeSelect) {
+        applyMapCameraMode(dom.mapRenderModeSelect.value);
+      }
       refreshAllViews();
       syncUrlState();
     });
+  });
+
+  dom.mapElevationScaleRange.addEventListener("input", () => {
+    updateElevationScaleLabel();
+    buildMap();
+    syncUrlState();
   });
 
   dom.regPresetSelect.addEventListener("change", () => {
@@ -1653,6 +1830,7 @@ function registerHandlers() {
   dom.resetMapBtn.addEventListener("click", () => {
     state.selectedCountyFips = null;
     state.viewState = { ...DEFAULT_VIEW_STATE };
+    applyMapCameraMode(dom.mapRenderModeSelect.value);
     dom.countyDetails.textContent = "Click a county to pin details here.";
 
     if (state.deck) {
@@ -1785,6 +1963,8 @@ async function init() {
 
     const queryState = readUrlState();
     applyUrlState(queryState);
+    applyMapCameraMode(dom.mapRenderModeSelect.value);
+    updateElevationScaleLabel();
 
     if (dom.regPresetSelect.options.length > 0 && !queryState.dep) {
       applyPresetToControls(dom.regPresetSelect.value);

@@ -114,6 +114,11 @@ textarea {
   color: var(--ink);
 }
 
+input[type="range"] {
+  width: 100%;
+  margin-top: 0.28rem;
+}
+
 textarea {
   resize: vertical;
   min-height: 64px;
@@ -186,6 +191,12 @@ hr {
   font-size: 0.82rem;
   color: var(--muted);
   word-break: break-word;
+}
+
+.range-label {
+  margin-top: 0.32rem;
+  font-size: 0.79rem;
+  color: #4b6670;
 }
 
 .summary-box {
