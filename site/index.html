@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Retaliatory Tariff County Explorer</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/deck.gl@8.9.36/dist.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Retaliatory Tariff County Explorer</h1>
+    <p>County-level tariff exposure, political salience, and model outputs</p>
+  </header>
+
+  <main class="layout">
+    <aside class="controls">
+      <section class="card">
+        <h2>Controls</h2>
+        <label for="yearSelect">Year</label>
+        <select id="yearSelect"></select>
+
+        <label for="metricSelect">County map metric</label>
+        <select id="metricSelect">
+          <option value="county_tariff_exposure_mean">Exposure (level)</option>
+          <option value="county_tariff_exposure_per_worker">Exposure (per worker)</option>
+          <option value="tariffed_emp_share">Tariffed employment share</option>
+          <option value="political_salience_weighted_exposure">Political salience index</option>
+          <option value="gop_share_20">GOP share (2020)</option>
+          <option value="gop_share_24">GOP share (2024)</option>
+          <option value="swingness_20">Competitiveness (2020)</option>
+        </select>
+
+        <label for="scatterSelect">Scatter x-axis</label>
+        <select id="scatterSelect">
+          <option value="gop_share_20">GOP share (2020)</option>
+          <option value="gop_share_24">GOP share (2024)</option>
+          <option value="swingness_20">Competitiveness (2020)</option>
+          <option value="tariffed_emp_share">Tariffed employment share</option>
+        </select>
+      </section>
+
+      <section class="card">
+        <h2>Build Status</h2>
+        <div id="statusBlock"></div>
+      </section>
+
+      <section class="card">
+        <h2>Main Coefficients</h2>
+        <div id="coefTable"></div>
+      </section>
+    </aside>
+
+    <section class="content">
+      <section class="panel-grid">
+        <article class="card large">
+          <h2>County Map (WebGL)</h2>
+          <div id="map"></div>
+        </article>
+
+        <article class="card">
+          <h2>Exposure vs Political Measure (WebGL)</h2>
+          <div id="scatter"></div>
+        </article>
+      </section>
+
+      <section class="panel-grid">
+        <article class="card">
+          <h2>Exposure Trend</h2>
+          <div id="trend"></div>
+        </article>
+
+        <article class="card">
+          <h2>Top Counties</h2>
+          <div class="table-wrap">
+            <table id="topTable">
+              <thead>
+                <tr>
+                  <th>County</th>
+                  <th>State</th>
+                  <th>Exposure</th>
+                  <th>Per Worker</th>
+                  <th>GOP20</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel-grid">
+        <article class="card">
+          <h2>WebGPU Preview</h2>
+          <p id="gpuStatus"></p>
+          <canvas id="webgpuCanvas" width="800" height="380"></canvas>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

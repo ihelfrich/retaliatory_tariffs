@@ -1,0 +1,170 @@
+:root {
+  --bg: #f3f4ef;
+  --paper: #ffffff;
+  --ink: #10191f;
+  --muted: #546470;
+  --line: #d8dddf;
+  --accent: #0e7490;
+  --accent-2: #a16207;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Source Sans 3", "Avenir Next", "Segoe UI", sans-serif;
+  background: linear-gradient(160deg, #f6f7f3 0%, #e8edee 100%);
+  color: var(--ink);
+}
+
+.topbar {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: 0.01em;
+}
+
+.topbar p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.controls {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.content {
+  display: grid;
+  gap: 1rem;
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.9rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.card h2 {
+  margin: 0 0 0.55rem;
+  font-size: 1rem;
+  color: #14353f;
+}
+
+.card label {
+  display: block;
+  margin: 0.45rem 0 0.25rem;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.card select {
+  width: 100%;
+  padding: 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.card.large {
+  grid-column: 1 / span 2;
+}
+
+#map {
+  width: 100%;
+  height: 620px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+#scatter,
+#trend {
+  width: 100%;
+  height: 380px;
+}
+
+#webgpuCanvas {
+  width: 100%;
+  height: 380px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0f1722;
+}
+
+#gpuStatus {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+}
+
+#statusBlock p {
+  margin: 0.3rem 0;
+  font-size: 0.9rem;
+}
+
+#coefTable table,
+#topTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+#coefTable th,
+#coefTable td,
+#topTable th,
+#topTable td {
+  border-bottom: 1px solid #e5e8ea;
+  padding: 0.35rem;
+  text-align: left;
+}
+
+#coefTable th,
+#topTable th {
+  color: #243b46;
+  font-weight: 600;
+}
+
+.table-wrap {
+  max-height: 330px;
+  overflow: auto;
+}
+
+@media (max-width: 1200px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card.large {
+    grid-column: auto;
+  }
+
+  #map {
+    height: 500px;
+  }
+}
