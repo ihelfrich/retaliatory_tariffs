@@ -3,100 +3,178 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Retaliatory Tariff County Explorer</title>
+  <title>County Tariff Exposure Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css">
   <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/deck.gl@8.9.36/dist.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjs@13.2.0/lib/browser/math.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jstat@1.9.6/dist/jstat.min.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <h1>Retaliatory Tariff County Explorer</h1>
-    <p>County-level tariff exposure, political salience, and model outputs</p>
+  <header class="masthead">
+    <div>
+      <h1>County Tariff Exposure Studio</h1>
+      <p>Explore county patterns, build custom measures, and run quick OLS checks in browser.</p>
+    </div>
+    <div id="loadStatus" class="status-pill">Loading data...</div>
   </header>
 
-  <main class="layout">
-    <aside class="controls">
+  <main class="studio-grid">
+    <aside class="left-rail">
       <section class="card">
-        <h2>Controls</h2>
+        <h2>Map + Scatter Controls</h2>
+
         <label for="yearSelect">Year</label>
         <select id="yearSelect"></select>
 
-        <label for="metricSelect">County map metric</label>
-        <select id="metricSelect">
-          <option value="county_tariff_exposure_mean">Exposure (level)</option>
-          <option value="county_tariff_exposure_per_worker">Exposure (per worker)</option>
-          <option value="tariffed_emp_share">Tariffed employment share</option>
-          <option value="political_salience_weighted_exposure">Political salience index</option>
-          <option value="gop_share_20">GOP share (2020)</option>
-          <option value="gop_share_24">GOP share (2024)</option>
-          <option value="swingness_20">Competitiveness (2020)</option>
+        <label for="mapMetricSelect">County map variable</label>
+        <select id="mapMetricSelect"></select>
+
+        <label for="mapTransformSelect">Map transform</label>
+        <select id="mapTransformSelect">
+          <option value="none">None</option>
+          <option value="log">Signed log10(1 + |x|)</option>
+          <option value="zscore">Z-score</option>
+          <option value="rank">Rank percentile</option>
         </select>
 
-        <label for="scatterSelect">Scatter x-axis</label>
-        <select id="scatterSelect">
-          <option value="gop_share_20">GOP share (2020)</option>
-          <option value="gop_share_24">GOP share (2024)</option>
-          <option value="swingness_20">Competitiveness (2020)</option>
-          <option value="tariffed_emp_share">Tariffed employment share</option>
+        <label for="mapPaletteSelect">Map palette</label>
+        <select id="mapPaletteSelect">
+          <option value="teal_amber">Teal - Amber</option>
+          <option value="blue_red">Blue - Red</option>
+          <option value="forest_gold">Forest - Gold</option>
         </select>
+
+        <div class="button-row">
+          <button id="resetMapBtn" type="button">Reset map view</button>
+        </div>
+
+        <hr>
+
+        <label for="scatterXSelect">Scatter X variable</label>
+        <select id="scatterXSelect"></select>
+
+        <label for="scatterYSelect">Scatter Y variable</label>
+        <select id="scatterYSelect"></select>
+
+        <label for="scatterColorSelect">Scatter color variable</label>
+        <select id="scatterColorSelect"></select>
       </section>
 
       <section class="card">
-        <h2>Build Status</h2>
+        <h2>Custom Variable Builder</h2>
+
+        <label for="customNameInput">Variable name</label>
+        <input id="customNameInput" type="text" placeholder="e.g., salience_score_v2" autocomplete="off">
+
+        <label for="customFormulaInput">Formula</label>
+        <textarea id="customFormulaInput" rows="3" placeholder="(county_tariff_exposure_mean / county_emp_total) * alpha"></textarea>
+
+        <label for="customParamsInput">Parameters (JSON)</label>
+        <textarea id="customParamsInput" rows="3" placeholder='{"alpha": 0.75}'></textarea>
+
+        <div class="button-row">
+          <button id="addCustomVarBtn" type="button">Create / Update variable</button>
+          <button id="removeCustomVarBtn" type="button" class="ghost">Remove selected</button>
+        </div>
+
+        <label for="customVarList">Custom variables</label>
+        <select id="customVarList" size="6"></select>
+
+        <div id="customVarFeedback" class="feedback"></div>
+      </section>
+
+      <section class="card">
+        <h2>Regression Lab (OLS)</h2>
+
+        <label for="regScopeSelect">Sample scope</label>
+        <select id="regScopeSelect">
+          <option value="selected_year">Selected year only</option>
+          <option value="latest_year">Latest year only</option>
+          <option value="all_years">All years pooled</option>
+        </select>
+
+        <label for="regDependentSelect">Dependent variable</label>
+        <select id="regDependentSelect"></select>
+
+        <label for="regPredictorsInput">Predictors (comma-separated)</label>
+        <input id="regPredictorsInput" type="text" placeholder="gop_share_20, swingness_20, tariffed_emp_share" autocomplete="off">
+
+        <label class="checkbox-row">
+          <input id="regInterceptCheck" type="checkbox" checked>
+          Include intercept
+        </label>
+
+        <div class="button-row">
+          <button id="runRegBtn" type="button">Run regression</button>
+        </div>
+
+        <div id="regSummary" class="summary-box">No regression run yet.</div>
+
+        <div class="table-wrap short">
+          <table id="regResultTable">
+            <thead>
+              <tr>
+                <th>Term</th>
+                <th>Estimate</th>
+                <th>SE</th>
+                <th>t</th>
+                <th>p</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Build Checks</h2>
         <div id="statusBlock"></div>
-      </section>
-
-      <section class="card">
-        <h2>Main Coefficients</h2>
-        <div id="coefTable"></div>
       </section>
     </aside>
 
-    <section class="content">
-      <section class="panel-grid">
-        <article class="card large">
-          <h2>County Map (WebGL)</h2>
-          <div id="map"></div>
-        </article>
+    <section class="main-stage">
+      <section class="card map-card">
+        <div class="card-head">
+          <h2 id="mapTitle">County map</h2>
+          <div id="mapLegend" class="legend"></div>
+        </div>
+        <div id="map"></div>
+        <div id="countyDetails" class="county-details">Click a county to pin details here.</div>
+      </section>
 
-        <article class="card">
-          <h2>Exposure vs Political Measure (WebGL)</h2>
+      <section class="grid-two">
+        <section class="card">
+          <h2 id="scatterTitle">Scatter</h2>
           <div id="scatter"></div>
-        </article>
-      </section>
+        </section>
 
-      <section class="panel-grid">
-        <article class="card">
-          <h2>Exposure Trend</h2>
+        <section class="card">
+          <h2 id="trendTitle">Year trend</h2>
           <div id="trend"></div>
-        </article>
-
-        <article class="card">
-          <h2>Top Counties</h2>
-          <div class="table-wrap">
-            <table id="topTable">
-              <thead>
-                <tr>
-                  <th>County</th>
-                  <th>State</th>
-                  <th>Exposure</th>
-                  <th>Per Worker</th>
-                  <th>GOP20</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </article>
+        </section>
       </section>
 
-      <section class="panel-grid">
-        <article class="card">
-          <h2>WebGPU Preview</h2>
-          <p id="gpuStatus"></p>
-          <canvas id="webgpuCanvas" width="800" height="380"></canvas>
-        </article>
+      <section class="card">
+        <h2 id="tableTitle">Top counties</h2>
+        <div class="table-wrap">
+          <table id="topTable">
+            <thead>
+              <tr>
+                <th>County</th>
+                <th>State</th>
+                <th>Value</th>
+                <th>Exposure</th>
+                <th>GOP20</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </section>
     </section>
   </main>

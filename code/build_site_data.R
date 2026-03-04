@@ -21,21 +21,18 @@ panel <- read_csv(panel_path, show_col_types = FALSE) %>%
     county_fips = str_pad(as.character(county_fips), width = 5, side = "left", pad = "0"),
     county_name = as.character(county_name),
     state_name = as.character(state_name),
-    year = as.integer(year),
-    county_tariff_exposure_mean = as.numeric(county_tariff_exposure_mean),
-    county_tariff_exposure_per_worker = as.numeric(county_tariff_exposure_per_worker),
-    tariffed_emp_share = as.numeric(tariffed_emp_share),
-    gop_share_20 = as.numeric(gop_share_20),
-    gop_share_24 = as.numeric(gop_share_24),
-    swingness_20 = as.numeric(swingness_20),
-    swingness_24 = as.numeric(swingness_24),
-    political_salience_weighted_exposure = as.numeric(political_salience_weighted_exposure)
-  ) %>%
-  select(
-    county_fips, county_name, state_name, year,
-    county_tariff_exposure_mean, county_tariff_exposure_per_worker,
-    tariffed_emp_share, gop_share_20, gop_share_24, swingness_20, swingness_24,
-    political_salience_weighted_exposure
+    year = as.integer(year)
+  )
+
+id_cols <- c("county_fips", "county_name", "state_name", "year")
+numeric_candidates <- setdiff(names(panel), id_cols)
+
+panel <- panel %>%
+  mutate(
+    across(
+      all_of(numeric_candidates),
+      ~ suppressWarnings(as.numeric(.x))
+    )
   )
 
 latest_year <- max(panel$year, na.rm = TRUE)
