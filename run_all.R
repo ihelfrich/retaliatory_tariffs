@@ -41,7 +41,9 @@ core_scripts <- c(
   "code/overhaul_open_data_panel.R",
   "code/validate_core_outputs.R",
   "code/build_analysis_outputs.R",
-  "code/build_site_data.R"
+  "code/build_site_data.R",
+  "code/build_bivariate_maps.R",
+  "code/build_fixest_models.R"
 )
 
 missing_scripts <- core_scripts[!file.exists(core_scripts)]
@@ -57,6 +59,15 @@ if (check_only) {
 for (script_path in core_scripts) {
   message("Running ", script_path)
   source(script_path)
+}
+
+if (file.exists("analysis/report.qmd") &&
+    requireNamespace("quarto", quietly = TRUE) &&
+    !is.null(quarto::quarto_path())) {
+  message("Rendering analysis/report.qmd")
+  quarto::quarto_render("analysis/report.qmd")
+} else {
+  message("Skipping Quarto render (analysis/report.qmd missing or Quarto unavailable).")
 }
 
 donations_cache <- "./data/public/raw/fec_donations_by_zip_focus_committees.csv"

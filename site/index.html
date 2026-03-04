@@ -18,7 +18,7 @@
   <header class="masthead">
     <div>
       <h1>County Tariff Exposure Studio</h1>
-      <p>Explore county patterns, build custom measures, and run quick OLS checks in browser.</p>
+      <p>Map-first exploration, custom variable formulas, and robust county regressions.</p>
     </div>
     <div id="loadStatus" class="status-pill">Loading data...</div>
   </header>
@@ -40,6 +40,12 @@
           <option value="log">Signed log10(1 + |x|)</option>
           <option value="zscore">Z-score</option>
           <option value="rank">Rank percentile</option>
+        </select>
+
+        <label for="mapScaleModeSelect">Map scale mode</label>
+        <select id="mapScaleModeSelect">
+          <option value="variable_year_auto">Variable-year auto</option>
+          <option value="variable_global">Variable global</option>
         </select>
 
         <label for="mapPaletteSelect">Map palette</label>
@@ -78,6 +84,7 @@
         <textarea id="customParamsInput" rows="3" placeholder='{"alpha": 0.75}'></textarea>
 
         <div class="button-row">
+          <button id="previewCustomVarBtn" type="button" class="ghost">Preview formula</button>
           <button id="addCustomVarBtn" type="button">Create / Update variable</button>
           <button id="removeCustomVarBtn" type="button" class="ghost">Remove selected</button>
         </div>
@@ -85,11 +92,15 @@
         <label for="customVarList">Custom variables</label>
         <select id="customVarList" size="6"></select>
 
+        <div id="customVarPreview" class="feedback"></div>
         <div id="customVarFeedback" class="feedback"></div>
       </section>
 
       <section class="card">
-        <h2>Regression Lab (OLS)</h2>
+        <h2>Regression Lab</h2>
+
+        <label for="regPresetSelect">Preset</label>
+        <select id="regPresetSelect"></select>
 
         <label for="regScopeSelect">Sample scope</label>
         <select id="regScopeSelect">
@@ -101,8 +112,18 @@
         <label for="regDependentSelect">Dependent variable</label>
         <select id="regDependentSelect"></select>
 
-        <label for="regPredictorsInput">Predictors (comma-separated)</label>
-        <input id="regPredictorsInput" type="text" placeholder="gop_share_20, swingness_20, tariffed_emp_share" autocomplete="off">
+        <label for="regPredictorSelect">Predictor chips (multi-select)</label>
+        <select id="regPredictorSelect" class="chip-select" size="8" multiple></select>
+
+        <label for="regPredictorsAdvanced">Advanced predictor list (optional)</label>
+        <input id="regPredictorsAdvanced" type="text" placeholder="comma-separated extras" autocomplete="off">
+
+        <label for="regSeModeSelect">Standard errors</label>
+        <select id="regSeModeSelect">
+          <option value="hc1">HC1 robust (default)</option>
+          <option value="cluster_state">Clustered by state</option>
+          <option value="ols">Classical OLS</option>
+        </select>
 
         <label class="checkbox-row">
           <input id="regInterceptCheck" type="checkbox" checked>
@@ -114,6 +135,7 @@
         </div>
 
         <div id="regSummary" class="summary-box">No regression run yet.</div>
+        <div id="regWarnings" class="feedback"></div>
 
         <div class="table-wrap short">
           <table id="regResultTable">
@@ -124,6 +146,8 @@
                 <th>SE</th>
                 <th>t</th>
                 <th>p</th>
+                <th>CI low</th>
+                <th>CI high</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -143,6 +167,8 @@
           <h2 id="mapTitle">County map</h2>
           <div id="mapLegend" class="legend"></div>
         </div>
+        <div id="mapStats" class="stats-strip"></div>
+        <div id="mapNotice" class="notice"></div>
         <div id="map"></div>
         <div id="countyDetails" class="county-details">Click a county to pin details here.</div>
       </section>

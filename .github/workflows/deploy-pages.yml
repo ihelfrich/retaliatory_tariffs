@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - staging
   workflow_dispatch:
 
 permissions:
@@ -12,15 +13,87 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Smoke Checks
+        run: |
+          set -euo pipefail
+          node --check site/app.js
+          test -f site/index.html
+          test -f site/styles.css
+          test -f site/data/panel.json
+          test -f site/data/meta.json
+          test -f site/data/variables.json
+          test -f site/data/regression_presets.json
+
+          node <<'NODE'
+          const fs = require('fs');
+          const panel = JSON.parse(fs.readFileSync('site/data/panel.json', 'utf8'));
+          const meta = JSON.parse(fs.readFileSync('site/data/meta.json', 'utf8'));
+          if (!Array.isArray(panel) || panel.length < 1000) {
+            throw new Error('panel.json has too few rows');
+          }
+          if (!meta.schema_version || !meta.latest_year) {
+            throw new Error('meta.json missing schema_version/latest_year');
+          }
+          console.log('Smoke checks passed:', panel.length, 'rows');
+          NODE
+
+      - name: Assemble Pages Tree
+        run: |
+          set -euo pipefail
+
+          rm -rf .pages
+          mkdir -p .pages
+
+          BRANCH="${GITHUB_REF_NAME}"
+
+          if [ "$BRANCH" = "main" ]; then
+            cp -R site/. .pages/
+
+            if git show-ref --verify --quiet refs/remotes/origin/staging; then
+              rm -rf /tmp/staging_extract
+              mkdir -p /tmp/staging_extract .pages/staging
+              git archive origin/staging site | tar -x -C /tmp/staging_extract
+              if [ -d /tmp/staging_extract/site ]; then
+                cp -R /tmp/staging_extract/site/. .pages/staging/
+              fi
+            fi
+          elif [ "$BRANCH" = "staging" ]; then
+            if git show-ref --verify --quiet refs/remotes/origin/main; then
+              rm -rf /tmp/main_extract
+              mkdir -p /tmp/main_extract
+              git archive origin/main site | tar -x -C /tmp/main_extract
+              if [ -d /tmp/main_extract/site ]; then
+                cp -R /tmp/main_extract/site/. .pages/
+              fi
+            else
+              cp -R site/. .pages/
+            fi
+
+            mkdir -p .pages/staging
+            cp -R site/. .pages/staging/
+          else
+            cp -R site/. .pages/
+          fi
+
+          touch .pages/.nojekyll
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -28,7 +101,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: .pages
 
   deploy:
     environment:

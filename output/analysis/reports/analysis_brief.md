@@ -1,6 +1,6 @@
 # County Tariff Exposure: Analysis Brief
 
-Generated: 2026-03-03
+Generated: 2026-03-04
 
 ## Core research question
 Did retaliatory tariffs concentrate in politically salient counties?

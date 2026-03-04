@@ -1,33 +1,6 @@
 const DATA_DIR = "./data";
 const EXCLUDE_STATEFP = new Set(["02", "15", "60", "66", "69", "72", "78"]);
 
-const KNOWN_LABELS = {
-  county_tariff_exposure_mean: "Tariff exposure (level)",
-  county_tariff_exposure_p90: "Tariff exposure (p90)",
-  county_tariff_exposure_per_worker: "Tariff exposure (per worker)",
-  county_allocated_exports_total: "Allocated exports",
-  tariffed_emp_share: "Tariffed employment share",
-  county_emp_total: "County employment",
-  sectors_count: "Sector count",
-  tariffed_sectors_count: "Tariffed sector count",
-  gop_share_16: "GOP share 2016",
-  gop_share_20: "GOP share 2020",
-  gop_share_24: "GOP share 2024",
-  dem_share_16: "Dem share 2016",
-  dem_share_20: "Dem share 2020",
-  dem_share_24: "Dem share 2024",
-  margin_16: "Margin 2016",
-  margin_20: "Margin 2020",
-  margin_24: "Margin 2024",
-  swingness_16: "Swingness 2016",
-  swingness_20: "Swingness 2020",
-  swingness_24: "Swingness 2024",
-  gop_shift_16_20: "GOP shift 2016-2020",
-  gop_shift_20_24: "GOP shift 2020-2024",
-  exposure_rank_within_year: "Exposure rank in year",
-  political_salience_weighted_exposure: "Political salience weighted exposure"
-};
-
 const PALETTES = {
   teal_amber: [
     [29, 61, 78],
@@ -52,17 +25,69 @@ const PALETTES = {
   ]
 };
 
-const DEFAULT_MAP_VAR = "county_tariff_exposure_mean";
-const DEFAULT_SCATTER_X = "gop_share_20";
-const DEFAULT_SCATTER_Y = "county_tariff_exposure_mean";
-const DEFAULT_SCATTER_COLOR = "swingness_20";
+const KNOWN_LABELS = {
+  county_tariff_exposure_mean: "Tariff exposure (mean)",
+  county_tariff_exposure_p90: "Tariff exposure (p90)",
+  county_tariff_exposure_per_worker: "Tariff exposure per worker",
+  county_allocated_exports_total: "Allocated exports",
+  tariffed_emp_share: "Tariffed employment share",
+  county_emp_total: "County employment",
+  sectors_count: "Sector count",
+  tariffed_sectors_count: "Tariffed sector count",
+  gop_share_16: "GOP share 2016",
+  gop_share_20: "GOP share 2020",
+  gop_share_24: "GOP share 2024",
+  dem_share_16: "Dem share 2016",
+  dem_share_20: "Dem share 2020",
+  dem_share_24: "Dem share 2024",
+  margin_16: "Margin 2016",
+  margin_20: "Margin 2020",
+  margin_24: "Margin 2024",
+  swingness_16: "Swingness 2016",
+  swingness_20: "Swingness 2020",
+  swingness_24: "Swingness 2024",
+  gop_shift_16_20: "GOP shift 2016-2020",
+  gop_shift_20_24: "GOP shift 2020-2024",
+  exposure_rank_within_year: "Exposure rank within year",
+  political_salience_weighted_exposure: "Political salience weighted exposure"
+};
+
+const DEFAULT_VIEW_STATE = {
+  longitude: -98.35,
+  latitude: 38.5,
+  zoom: 3.25,
+  minZoom: 2.4,
+  maxZoom: 9,
+  pitch: 0,
+  bearing: 0
+};
+
+const DEFAULTS = {
+  mapVar: "county_tariff_exposure_mean",
+  mapTransform: "none",
+  mapScaleMode: "variable_year_auto",
+  mapPalette: "teal_amber",
+  scatterX: "gop_share_20",
+  scatterY: "county_tariff_exposure_mean",
+  scatterColor: "swingness_20",
+  regDep: "county_tariff_exposure_mean",
+  regPreds: ["gop_share_20", "swingness_20", "tariffed_emp_share"],
+  regScope: "latest_year",
+  regSeMode: "hc1",
+  regIntercept: true
+};
+
+const mathApi = globalThis.math;
+const jStatApi = globalThis.jStat;
 
 const dom = {
   loadStatus: document.getElementById("loadStatus"),
   statusBlock: document.getElementById("statusBlock"),
-  countyDetails: document.getElementById("countyDetails"),
-  mapLegend: document.getElementById("mapLegend"),
   mapTitle: document.getElementById("mapTitle"),
+  mapLegend: document.getElementById("mapLegend"),
+  mapStats: document.getElementById("mapStats"),
+  mapNotice: document.getElementById("mapNotice"),
+  countyDetails: document.getElementById("countyDetails"),
   scatterTitle: document.getElementById("scatterTitle"),
   trendTitle: document.getElementById("trendTitle"),
   tableTitle: document.getElementById("tableTitle"),
@@ -70,6 +95,7 @@ const dom = {
   yearSelect: document.getElementById("yearSelect"),
   mapMetricSelect: document.getElementById("mapMetricSelect"),
   mapTransformSelect: document.getElementById("mapTransformSelect"),
+  mapScaleModeSelect: document.getElementById("mapScaleModeSelect"),
   mapPaletteSelect: document.getElementById("mapPaletteSelect"),
   resetMapBtn: document.getElementById("resetMapBtn"),
 
@@ -80,17 +106,23 @@ const dom = {
   customNameInput: document.getElementById("customNameInput"),
   customFormulaInput: document.getElementById("customFormulaInput"),
   customParamsInput: document.getElementById("customParamsInput"),
+  previewCustomVarBtn: document.getElementById("previewCustomVarBtn"),
   addCustomVarBtn: document.getElementById("addCustomVarBtn"),
   removeCustomVarBtn: document.getElementById("removeCustomVarBtn"),
   customVarList: document.getElementById("customVarList"),
+  customVarPreview: document.getElementById("customVarPreview"),
   customVarFeedback: document.getElementById("customVarFeedback"),
 
+  regPresetSelect: document.getElementById("regPresetSelect"),
   regScopeSelect: document.getElementById("regScopeSelect"),
   regDependentSelect: document.getElementById("regDependentSelect"),
-  regPredictorsInput: document.getElementById("regPredictorsInput"),
+  regPredictorSelect: document.getElementById("regPredictorSelect"),
+  regPredictorsAdvanced: document.getElementById("regPredictorsAdvanced"),
+  regSeModeSelect: document.getElementById("regSeModeSelect"),
   regInterceptCheck: document.getElementById("regInterceptCheck"),
   runRegBtn: document.getElementById("runRegBtn"),
   regSummary: document.getElementById("regSummary"),
+  regWarnings: document.getElementById("regWarnings"),
   regResultBody: document.querySelector("#regResultTable tbody"),
 
   topTableBody: document.querySelector("#topTable tbody")
@@ -101,20 +133,18 @@ const state = {
   yearSummary: [],
   validationChecks: [],
   meta: null,
-  countiesGeo: [],
+  variableMeta: [],
+  variableMetaMap: new Map(),
+  regressionPresets: [],
   years: [],
   latestYear: null,
   numericVars: [],
   customVars: new Map(),
   selectedCountyFips: null,
-  mapViewState: {
-    longitude: -98.35,
-    latitude: 38.5,
-    zoom: 3.25,
-    minZoom: 2.4,
-    maxZoom: 9
-  },
-  deck: null
+  countiesGeo: [],
+  deck: null,
+  viewState: { ...DEFAULT_VIEW_STATE },
+  mapScaleCache: new Map()
 };
 
 const fmt = {
@@ -131,73 +161,6 @@ const fmt = {
   })
 };
 
-const mathApi = globalThis.math;
-const jStatApi = globalThis.jStat;
-
-function autoLabel(key) {
-  if (KNOWN_LABELS[key]) return KNOWN_LABELS[key];
-  return key
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function normalizeFips(value) {
-  if (value === null || value === undefined) return null;
-  const s = String(value).replace(/[^0-9]/g, "");
-  if (!s) return null;
-  return s.padStart(5, "0");
-}
-
-function finiteOrNull(value) {
-  return Number.isFinite(value) ? value : null;
-}
-
-function signedLog(value) {
-  if (!Number.isFinite(value)) return null;
-  if (value === 0) return 0;
-  const sign = value >= 0 ? 1 : -1;
-  return sign * Math.log10(Math.abs(value) + 1);
-}
-
-function quantile(sortedValues, p) {
-  if (sortedValues.length === 0) return null;
-  const idx = (sortedValues.length - 1) * p;
-  const lo = Math.floor(idx);
-  const hi = Math.ceil(idx);
-  if (lo === hi) return sortedValues[lo];
-  const w = idx - lo;
-  return sortedValues[lo] * (1 - w) + sortedValues[hi] * w;
-}
-
-function median(values) {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  return quantile(sorted, 0.5);
-}
-
-function mean(values) {
-  if (values.length === 0) return null;
-  return values.reduce((acc, v) => acc + v, 0) / values.length;
-}
-
-function sd(values, m) {
-  if (values.length < 2 || !Number.isFinite(m)) return null;
-  const ss = values.reduce((acc, v) => acc + (v - m) ** 2, 0);
-  return Math.sqrt(ss / (values.length - 1));
-}
-
-function byYear(year) {
-  return state.panel.filter((row) => row.year === year);
-}
-
-async function fetchJson(path) {
-  const response = await fetch(path);
-  if (!response.ok) {
-    throw new Error(`Request failed (${response.status}) for ${path}`);
-  }
-  return response.json();
-}
-
 function setStatus(text, type = "info") {
   dom.loadStatus.textContent = text;
   dom.loadStatus.classList.remove("good", "bad");
@@ -205,147 +168,140 @@ function setStatus(text, type = "info") {
   if (type === "bad") dom.loadStatus.classList.add("bad");
 }
 
-function parsePanelRows(rows) {
-  return rows.map((row) => {
-    const out = { ...row };
-    out.county_fips = normalizeFips(row.county_fips);
-    out.year = Number(row.year);
-
-    Object.entries(out).forEach(([k, v]) => {
-      if (k === "county_fips" || k === "county_name" || k === "state_name") return;
-      if (v === null || v === undefined || v === "") return;
-      const n = Number(v);
-      if (Number.isFinite(n)) out[k] = n;
-    });
-
-    return out;
-  });
-}
-
-function detectNumericVars(rows) {
-  if (rows.length === 0) return [];
-  const keys = new Set();
-  rows.forEach((row) => {
-    Object.keys(row).forEach((k) => keys.add(k));
-  });
-
-  const disallow = new Set(["county_fips", "county_name", "state_name"]);
-  return [...keys]
-    .filter((k) => !disallow.has(k))
-    .filter((k) => rows.some((row) => Number.isFinite(row[k])));
-}
-
-function numericVarOptions() {
-  return state.numericVars.map((k) => ({ value: k, label: autoLabel(k) }));
-}
-
-function replaceOptions(selectEl, options, preferred) {
-  const prev = selectEl.value;
-  selectEl.innerHTML = "";
-
-  options.forEach((opt) => {
-    const node = document.createElement("option");
-    node.value = opt.value;
-    node.textContent = opt.label;
-    selectEl.appendChild(node);
-  });
-
-  const candidate = [prev, preferred].find((v) => v && options.some((o) => o.value === v));
-  if (candidate) {
-    selectEl.value = candidate;
-  } else if (options.length > 0) {
-    selectEl.value = options[0].value;
+function autoLabel(key) {
+  if (state.variableMetaMap.has(key)) {
+    return state.variableMetaMap.get(key).label;
   }
+  if (KNOWN_LABELS[key]) return KNOWN_LABELS[key];
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function rebuildVariableControls() {
-  const options = numericVarOptions();
-
-  replaceOptions(dom.mapMetricSelect, options, DEFAULT_MAP_VAR);
-  replaceOptions(dom.scatterXSelect, options, DEFAULT_SCATTER_X);
-  replaceOptions(dom.scatterYSelect, options, DEFAULT_SCATTER_Y);
-  replaceOptions(dom.scatterColorSelect, options, DEFAULT_SCATTER_COLOR);
-  replaceOptions(dom.regDependentSelect, options, DEFAULT_SCATTER_Y);
-
-  if (!dom.regPredictorsInput.value.trim()) {
-    dom.regPredictorsInput.value = [
-      DEFAULT_SCATTER_X,
-      "swingness_20",
-      "tariffed_emp_share"
-    ].filter((k) => options.some((o) => o.value === k)).join(", ");
-  }
+function inferGroup(name) {
+  if (/^(gop|dem|margin|swingness|gop_shift)/.test(name)) return "politics";
+  if (/exposure|tariff|exports/.test(name)) return "exposure";
+  if (/emp|sector|county_allocated/.test(name)) return "structure";
+  return "other";
 }
 
-function buildStatusBlock() {
-  const checks = state.validationChecks || [];
-  const pass = checks.filter((c) => String(c.status).toLowerCase() === "pass").length;
-  const fail = checks.length - pass;
+function allowedTransforms(name) {
+  if (/share|margin|swing|rank|shift/.test(name)) return ["none", "zscore", "rank"];
+  if (/exposure|exports|emp|count|tariff/.test(name)) return ["none", "log", "zscore", "rank"];
+  return ["none", "zscore", "rank"];
+}
 
-  const lines = [
-    `<p><strong>Generated:</strong> ${state.meta?.generated_at ? String(state.meta.generated_at) : "n/a"}</p>`,
-    `<p><strong>Rows:</strong> ${(state.meta?.n_panel_rows || state.panel.length).toLocaleString()}</p>`,
-    `<p><strong>Latest year:</strong> ${state.latestYear ?? "n/a"}</p>`,
-    `<p><strong>Validation:</strong> <span class="${fail === 0 ? "good" : "bad"}">${pass}/${checks.length} passing</span></p>`
-  ];
+function normalizeFips(value) {
+  if (value === null || value === undefined) return null;
+  const stripped = String(value).replace(/[^0-9]/g, "");
+  if (!stripped) return null;
+  return stripped.padStart(5, "0");
+}
 
-  const detail = checks.slice(0, 8).map((c) => {
-    const ok = String(c.status).toLowerCase() === "pass";
-    return `<p class="${ok ? "good" : "bad"}">${c.check}: ${c.status}</p>`;
-  });
+function asNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
-  dom.statusBlock.innerHTML = [...lines, ...detail].join("");
+function finiteOrNull(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+function signedLog10(value) {
+  if (!Number.isFinite(value)) return null;
+  if (value === 0) return 0;
+  const sign = value >= 0 ? 1 : -1;
+  return sign * Math.log10(Math.abs(value) + 1);
+}
+
+function mean(values) {
+  if (!values.length) return null;
+  return values.reduce((acc, v) => acc + v, 0) / values.length;
+}
+
+function quantile(sortedValues, p) {
+  if (!sortedValues.length) return null;
+  const idx = (sortedValues.length - 1) * p;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sortedValues[lo];
+  const weight = idx - lo;
+  return sortedValues[lo] * (1 - weight) + sortedValues[hi] * weight;
+}
+
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return quantile(sorted, 0.5);
+}
+
+function formatValue(value) {
+  if (!Number.isFinite(value)) return "NA";
+  const abs = Math.abs(value);
+  if (abs >= 1000000) return fmt.short.format(value);
+  if (abs >= 1) return fmt.num2.format(value);
+  if (abs === 0) return "0";
+  return fmt.num3.format(value);
+}
+
+function transformValue(value, transform) {
+  const raw = finiteOrNull(value);
+  if (!Number.isFinite(raw)) return null;
+
+  if (transform === "none") return raw;
+  if (transform === "log") return signedLog10(raw);
+
+  return raw;
 }
 
 function transformSeries(values, transform) {
   const raw = values.map((v) => finiteOrNull(v));
 
-  if (transform === "none") {
-    return raw;
-  }
-
-  if (transform === "log") {
-    return raw.map((v) => signedLog(v));
+  if (transform === "none" || transform === "log") {
+    return raw.map((v) => transformValue(v, transform));
   }
 
   if (transform === "zscore") {
     const finite = raw.filter((v) => Number.isFinite(v));
     const m = mean(finite);
-    const s = sd(finite, m);
+    const sd = Math.sqrt(
+      finite.reduce((acc, v) => acc + (v - m) ** 2, 0) /
+      Math.max(finite.length - 1, 1)
+    );
+
     return raw.map((v) => {
       if (!Number.isFinite(v)) return null;
-      if (!Number.isFinite(s) || s === 0) return 0;
-      return (v - m) / s;
+      if (!Number.isFinite(sd) || sd === 0) return 0;
+      return (v - m) / sd;
     });
   }
 
   if (transform === "rank") {
-    const finite = raw
-      .map((v, i) => ({ v, i }))
-      .filter((x) => Number.isFinite(x.v))
-      .sort((a, b) => a.v - b.v);
+    const ranked = raw.map((v, idx) => ({ v, idx })).filter((x) => Number.isFinite(x.v));
+    ranked.sort((a, b) => a.v - b.v);
 
-    const ranked = new Array(raw.length).fill(null);
-    const denom = Math.max(finite.length - 1, 1);
-    finite.forEach((x, idx) => {
-      ranked[x.i] = idx / denom;
+    const out = new Array(raw.length).fill(null);
+    const denom = Math.max(ranked.length - 1, 1);
+    ranked.forEach((x, order) => {
+      out[x.idx] = order / denom;
     });
-    return ranked;
+    return out;
   }
 
   return raw;
 }
 
 function paletteColor(t, paletteName) {
-  const colors = PALETTES[paletteName] || PALETTES.teal_amber;
+  const palette = PALETTES[paletteName] || PALETTES.teal_amber;
   const clamped = Math.max(0, Math.min(1, t));
+  const scaled = clamped * (palette.length - 1);
+  const lo = Math.floor(scaled);
+  const hi = Math.min(lo + 1, palette.length - 1);
+  const w = scaled - lo;
 
-  const segment = (colors.length - 1) * clamped;
-  const lo = Math.floor(segment);
-  const hi = Math.min(colors.length - 1, lo + 1);
-  const w = segment - lo;
-
-  const c0 = colors[lo];
-  const c1 = colors[hi];
+  const c0 = palette[lo];
+  const c1 = palette[hi];
   return [
     Math.round(c0[0] * (1 - w) + c1[0] * w),
     Math.round(c0[1] * (1 - w) + c1[1] * w),
@@ -354,29 +310,366 @@ function paletteColor(t, paletteName) {
   ];
 }
 
-function formatValue(v) {
-  if (!Number.isFinite(v)) return "NA";
-  const abs = Math.abs(v);
-  if (abs >= 1000000) return fmt.short.format(v);
-  if (abs >= 1) return fmt.num2.format(v);
-  if (abs === 0) return "0";
-  return fmt.num3.format(v);
+function byYear(year) {
+  return state.panel.filter((row) => row.year === year);
 }
 
-function currentYear() {
+function selectedYear() {
   return Number(dom.yearSelect.value);
 }
 
 function selectedRows() {
-  return byYear(currentYear());
+  return byYear(selectedYear());
+}
+
+function optionsFromMetadata() {
+  return state.variableMeta
+    .filter((meta) => state.numericVars.includes(meta.name))
+    .sort((a, b) => {
+      if (a.group === b.group) return a.label.localeCompare(b.label);
+      return a.group.localeCompare(b.group);
+    })
+    .map((meta) => ({
+      value: meta.name,
+      label: `${meta.label}`,
+      group: meta.group
+    }));
+}
+
+function replaceOptions(selectEl, options, preferred = null, selectedValues = []) {
+  const previous = selectEl.multiple
+    ? Array.from(selectEl.selectedOptions).map((opt) => opt.value)
+    : selectEl.value;
+
+  selectEl.innerHTML = "";
+
+  options.forEach((opt) => {
+    const optionEl = document.createElement("option");
+    optionEl.value = opt.value;
+    optionEl.textContent = opt.label;
+    selectEl.appendChild(optionEl);
+  });
+
+  if (selectEl.multiple) {
+    const values = selectedValues.length ? selectedValues : previous;
+    const wanted = Array.isArray(values) ? values : [values];
+    Array.from(selectEl.options).forEach((opt) => {
+      opt.selected = wanted.includes(opt.value);
+    });
+  } else {
+    const candidate = [preferred, previous].find((v) =>
+      options.some((opt) => opt.value === v)
+    );
+    if (candidate) {
+      selectEl.value = candidate;
+    } else if (options.length > 0) {
+      selectEl.value = options[0].value;
+    }
+  }
+}
+
+function readUrlState() {
+  const p = new URLSearchParams(window.location.search);
+  return {
+    year: p.get("year"),
+    mapVar: p.get("map"),
+    mapTransform: p.get("map_t"),
+    mapScaleMode: p.get("map_scale"),
+    mapPalette: p.get("map_palette"),
+    scatterX: p.get("sx"),
+    scatterY: p.get("sy"),
+    scatterColor: p.get("sc"),
+    regDep: p.get("dep"),
+    regPreds: p.get("preds") ? p.get("preds").split(",").filter(Boolean) : [],
+    regScope: p.get("scope"),
+    regSeMode: p.get("se"),
+    regIntercept: p.get("intercept"),
+    regAdvanced: p.get("preds_adv")
+  };
+}
+
+function validOptionValue(selectEl, value) {
+  return Array.from(selectEl.options).some((opt) => opt.value === value);
+}
+
+function applyUrlState(queryState) {
+  if (queryState.year && validOptionValue(dom.yearSelect, queryState.year)) {
+    dom.yearSelect.value = queryState.year;
+  }
+  if (queryState.mapVar && validOptionValue(dom.mapMetricSelect, queryState.mapVar)) {
+    dom.mapMetricSelect.value = queryState.mapVar;
+  }
+  if (queryState.mapTransform && validOptionValue(dom.mapTransformSelect, queryState.mapTransform)) {
+    dom.mapTransformSelect.value = queryState.mapTransform;
+  }
+  if (queryState.mapScaleMode && validOptionValue(dom.mapScaleModeSelect, queryState.mapScaleMode)) {
+    dom.mapScaleModeSelect.value = queryState.mapScaleMode;
+  }
+  if (queryState.mapPalette && validOptionValue(dom.mapPaletteSelect, queryState.mapPalette)) {
+    dom.mapPaletteSelect.value = queryState.mapPalette;
+  }
+  if (queryState.scatterX && validOptionValue(dom.scatterXSelect, queryState.scatterX)) {
+    dom.scatterXSelect.value = queryState.scatterX;
+  }
+  if (queryState.scatterY && validOptionValue(dom.scatterYSelect, queryState.scatterY)) {
+    dom.scatterYSelect.value = queryState.scatterY;
+  }
+  if (queryState.scatterColor && validOptionValue(dom.scatterColorSelect, queryState.scatterColor)) {
+    dom.scatterColorSelect.value = queryState.scatterColor;
+  }
+  if (queryState.regDep && validOptionValue(dom.regDependentSelect, queryState.regDep)) {
+    dom.regDependentSelect.value = queryState.regDep;
+  }
+  if (queryState.regScope && validOptionValue(dom.regScopeSelect, queryState.regScope)) {
+    dom.regScopeSelect.value = queryState.regScope;
+  }
+  if (queryState.regSeMode && validOptionValue(dom.regSeModeSelect, queryState.regSeMode)) {
+    dom.regSeModeSelect.value = queryState.regSeMode;
+  }
+  if (queryState.regIntercept !== null) {
+    dom.regInterceptCheck.checked = queryState.regIntercept !== "false";
+  }
+  if (queryState.regAdvanced) {
+    dom.regPredictorsAdvanced.value = queryState.regAdvanced;
+  }
+
+  if (queryState.regPreds.length > 0) {
+    Array.from(dom.regPredictorSelect.options).forEach((opt) => {
+      opt.selected = queryState.regPreds.includes(opt.value);
+    });
+  }
+}
+
+function syncUrlState() {
+  const p = new URLSearchParams();
+  p.set("year", dom.yearSelect.value);
+  p.set("map", dom.mapMetricSelect.value);
+  p.set("map_t", dom.mapTransformSelect.value);
+  p.set("map_scale", dom.mapScaleModeSelect.value);
+  p.set("map_palette", dom.mapPaletteSelect.value);
+  p.set("sx", dom.scatterXSelect.value);
+  p.set("sy", dom.scatterYSelect.value);
+  p.set("sc", dom.scatterColorSelect.value);
+  p.set("dep", dom.regDependentSelect.value);
+  p.set("scope", dom.regScopeSelect.value);
+  p.set("se", dom.regSeModeSelect.value);
+  p.set("intercept", String(dom.regInterceptCheck.checked));
+
+  const selectedPredictors = Array.from(dom.regPredictorSelect.selectedOptions).map((opt) => opt.value);
+  if (selectedPredictors.length > 0) {
+    p.set("preds", selectedPredictors.join(","));
+  }
+
+  const adv = dom.regPredictorsAdvanced.value.trim();
+  if (adv) {
+    p.set("preds_adv", adv);
+  }
+
+  const next = `${window.location.pathname}?${p.toString()}`;
+  window.history.replaceState({}, "", next);
+}
+
+async function fetchJson(path) {
+  const response = await fetch(path);
+  if (!response.ok) {
+    throw new Error(`Failed request ${response.status}: ${path}`);
+  }
+  return response.json();
+}
+
+function parsePanelRows(rawRows) {
+  return rawRows.map((row) => {
+    const out = { ...row };
+    out.county_fips = normalizeFips(row.county_fips);
+    out.county_name = row.county_name || "";
+    out.state_name = row.state_name || "";
+    out.year = Number(row.year);
+
+    Object.keys(out).forEach((key) => {
+      if (["county_fips", "county_name", "state_name"].includes(key)) return;
+      const converted = asNumber(out[key]);
+      if (converted !== null) out[key] = converted;
+    });
+
+    return out;
+  });
+}
+
+function detectNumericVars(rows) {
+  if (!rows.length) return [];
+  const disallow = new Set(["county_fips", "county_name", "state_name"]);
+  const keys = new Set();
+  rows.forEach((row) => {
+    Object.keys(row).forEach((key) => keys.add(key));
+  });
+
+  return [...keys]
+    .filter((key) => !disallow.has(key))
+    .filter((key) => rows.some((row) => Number.isFinite(row[key])));
+}
+
+function normalizeVariableMetadata(rawMeta) {
+  if (!Array.isArray(rawMeta)) return [];
+
+  const seen = new Set();
+  return rawMeta
+    .map((row) => {
+      const name = String(row.name || "").trim();
+      if (!name) return null;
+
+      const allowed = Array.isArray(row.allowed_transforms)
+        ? row.allowed_transforms.filter((x) => ["none", "log", "zscore", "rank"].includes(x))
+        : allowedTransforms(name);
+
+      return {
+        name,
+        label: String(row.label || autoLabel(name)),
+        group: String(row.group || inferGroup(name)),
+        allowed_transforms: allowed.length > 0 ? allowed : ["none", "zscore", "rank"],
+        is_custom_allowed: row.is_custom_allowed !== false
+      };
+    })
+    .filter((row) => row !== null)
+    .filter((row) => {
+      if (seen.has(row.name)) return false;
+      seen.add(row.name);
+      return true;
+    });
+}
+
+function buildFallbackVariableMetadata() {
+  return state.numericVars.map((name) => ({
+    name,
+    label: KNOWN_LABELS[name] || autoLabel(name),
+    group: inferGroup(name),
+    allowed_transforms: allowedTransforms(name),
+    is_custom_allowed: true
+  }));
+}
+
+function normalizePresets(rawPresets) {
+  if (!Array.isArray(rawPresets)) return [];
+
+  return rawPresets
+    .map((preset) => {
+      const predictors = Array.isArray(preset.predictors)
+        ? preset.predictors.map((x) => String(x))
+        : [];
+
+      return {
+        id: String(preset.id || ""),
+        label: String(preset.label || ""),
+        sample_scope: String(preset.sample_scope || DEFAULTS.regScope),
+        dependent: String(preset.dependent || ""),
+        predictors,
+        se_mode: String(preset.se_mode || DEFAULTS.regSeMode),
+        include_intercept: preset.include_intercept !== false
+      };
+    })
+    .filter((preset) => preset.id && preset.label);
+}
+
+function fallbackPresets() {
+  return [
+    {
+      id: "baseline_latest_hc1",
+      label: "Latest year baseline (HC1)",
+      sample_scope: "latest_year",
+      dependent: DEFAULTS.regDep,
+      predictors: DEFAULTS.regPreds,
+      se_mode: "hc1",
+      include_intercept: true
+    },
+    {
+      id: "baseline_selected_cluster",
+      label: "Selected year baseline (cluster state)",
+      sample_scope: "selected_year",
+      dependent: DEFAULTS.regDep,
+      predictors: DEFAULTS.regPreds,
+      se_mode: "cluster_state",
+      include_intercept: true
+    }
+  ];
+}
+
+function buildSelectors() {
+  const yearOptions = state.years.map((year) => ({ value: String(year), label: String(year) }));
+  replaceOptions(dom.yearSelect, yearOptions, String(state.latestYear));
+
+  const variableOptions = optionsFromMetadata();
+
+  replaceOptions(dom.mapMetricSelect, variableOptions, DEFAULTS.mapVar);
+  replaceOptions(dom.scatterXSelect, variableOptions, DEFAULTS.scatterX);
+  replaceOptions(dom.scatterYSelect, variableOptions, DEFAULTS.scatterY);
+  replaceOptions(dom.scatterColorSelect, variableOptions, DEFAULTS.scatterColor);
+  replaceOptions(dom.regDependentSelect, variableOptions, DEFAULTS.regDep);
+
+  replaceOptions(dom.regPredictorSelect, variableOptions, null, DEFAULTS.regPreds);
+
+  const presetOptions = state.regressionPresets.map((preset) => ({
+    value: preset.id,
+    label: preset.label
+  }));
+  replaceOptions(dom.regPresetSelect, presetOptions, presetOptions[0]?.value || null);
+
+  if (!dom.regPredictorsAdvanced.value.trim()) {
+    dom.regPredictorsAdvanced.value = "";
+  }
+}
+
+function getPresetById(id) {
+  return state.regressionPresets.find((preset) => preset.id === id) || null;
+}
+
+function applyPresetToControls(presetId) {
+  const preset = getPresetById(presetId);
+  if (!preset) return;
+
+  if (validOptionValue(dom.regScopeSelect, preset.sample_scope)) {
+    dom.regScopeSelect.value = preset.sample_scope;
+  }
+  if (validOptionValue(dom.regDependentSelect, preset.dependent)) {
+    dom.regDependentSelect.value = preset.dependent;
+  }
+  if (validOptionValue(dom.regSeModeSelect, preset.se_mode)) {
+    dom.regSeModeSelect.value = preset.se_mode;
+  }
+  dom.regInterceptCheck.checked = Boolean(preset.include_intercept);
+
+  Array.from(dom.regPredictorSelect.options).forEach((opt) => {
+    opt.selected = preset.predictors.includes(opt.value);
+  });
+
+  dom.regPredictorsAdvanced.value = "";
+}
+
+function buildStatusBlock() {
+  const checks = Array.isArray(state.validationChecks) ? state.validationChecks : [];
+  const pass = checks.filter((row) => String(row.status).toLowerCase() === "pass").length;
+  const fail = checks.length - pass;
+
+  const lines = [
+    `<p><strong>Generated:</strong> ${state.meta?.generated_at || "n/a"}</p>`,
+    `<p><strong>Schema:</strong> ${state.meta?.schema_version || "n/a"}</p>`,
+    `<p><strong>Rows:</strong> ${(state.meta?.n_panel_rows || state.panel.length).toLocaleString()}</p>`,
+    `<p><strong>Latest year:</strong> ${state.latestYear || "n/a"}</p>`,
+    `<p><strong>Validation:</strong> <span class="${fail === 0 ? "good" : "bad"}">${pass}/${checks.length} passing</span></p>`
+  ];
+
+  const detail = checks.slice(0, 10).map((row) => {
+    const ok = String(row.status).toLowerCase() === "pass";
+    return `<p class="${ok ? "good" : "bad"}">${row.check}: ${row.status}</p>`;
+  });
+
+  dom.statusBlock.innerHTML = [...lines, ...detail].join("");
 }
 
 function createLegend(minVal, maxVal, paletteName, transformLabel) {
-  const colors = PALETTES[paletteName] || PALETTES.teal_amber;
-  const stops = colors
-    .map((c, idx) => {
-      const p = (idx / Math.max(colors.length - 1, 1)) * 100;
-      return `rgb(${c[0]} ${c[1]} ${c[2]}) ${p.toFixed(1)}%`;
+  const palette = PALETTES[paletteName] || PALETTES.teal_amber;
+  const stops = palette
+    .map((color, idx) => {
+      const p = (idx / Math.max(palette.length - 1, 1)) * 100;
+      return `rgb(${color[0]} ${color[1]} ${color[2]}) ${p.toFixed(1)}%`;
     })
     .join(", ");
 
@@ -388,51 +681,99 @@ function createLegend(minVal, maxVal, paletteName, transformLabel) {
   ].join("");
 }
 
+function mapRangeForVariable(variable, transform, scaleMode, yearRows) {
+  if (scaleMode === "variable_year_auto") {
+    const transformed = transformSeries(yearRows.map((row) => row[variable]), transform);
+    const finite = transformed.filter((v) => Number.isFinite(v));
+    if (!finite.length) return { min: 0, max: 1 };
+    return { min: Math.min(...finite), max: Math.max(...finite) };
+  }
+
+  const cacheKey = `${variable}||${transform}`;
+  if (state.mapScaleCache.has(cacheKey)) {
+    return state.mapScaleCache.get(cacheKey);
+  }
+
+  const transformed = transformSeries(state.panel.map((row) => row[variable]), transform);
+  const finite = transformed.filter((v) => Number.isFinite(v));
+  const range = finite.length
+    ? { min: Math.min(...finite), max: Math.max(...finite) }
+    : { min: 0, max: 1 };
+
+  state.mapScaleCache.set(cacheKey, range);
+  return range;
+}
+
 function buildMap() {
-  const year = currentYear();
-  const metricKey = dom.mapMetricSelect.value;
+  const year = selectedYear();
+  const variable = dom.mapMetricSelect.value;
   const transform = dom.mapTransformSelect.value;
   const palette = dom.mapPaletteSelect.value;
+  const scaleMode = dom.mapScaleModeSelect.value;
 
   const rows = byYear(year);
-  const rowMap = new Map(rows.map((r) => [r.county_fips, r]));
-  const metricRaw = rows.map((r) => r[metricKey]);
-  const metricTransformed = transformSeries(metricRaw, transform);
+  const rowMap = new Map(rows.map((row) => [row.county_fips, row]));
 
+  const transformed = transformSeries(rows.map((row) => row[variable]), transform);
   const valueByFips = new Map();
   rows.forEach((row, idx) => {
-    valueByFips.set(row.county_fips, metricTransformed[idx]);
+    valueByFips.set(row.county_fips, transformed[idx]);
   });
 
-  const finiteVals = metricTransformed.filter((v) => Number.isFinite(v));
-  const minVal = finiteVals.length > 0 ? Math.min(...finiteVals) : 0;
-  const maxVal = finiteVals.length > 0 ? Math.max(...finiteVals) : 1;
+  const finite = transformed.filter((v) => Number.isFinite(v));
+  const finiteCount = finite.length;
+  const missingCount = rows.length - finiteCount;
+  const minVal = finiteCount ? Math.min(...finite) : 0;
+  const maxVal = finiteCount ? Math.max(...finite) : 1;
+  const medVal = finiteCount ? median(finite) : null;
 
-  dom.mapTitle.textContent = `County map: ${autoLabel(metricKey)} (${year})`;
-  createLegend(minVal, maxVal, palette, transform);
+  const scale = mapRangeForVariable(variable, transform, scaleMode, rows);
+
+  dom.mapTitle.textContent = `County map: ${autoLabel(variable)} (${year})`;
+  createLegend(scale.min, scale.max, palette, transform);
+
+  dom.mapStats.textContent = [
+    `finite ${finiteCount.toLocaleString()} / ${rows.length.toLocaleString()}`,
+    `missing ${missingCount.toLocaleString()}`,
+    `min ${formatValue(minVal)}`,
+    `median ${formatValue(medVal)}`,
+    `max ${formatValue(maxVal)}`,
+    `transform ${transform}`,
+    `scale ${scaleMode}`
+  ].join(" | ");
+
+  if (finiteCount === 0) {
+    dom.mapNotice.textContent = "No finite values for this variable/year combination.";
+    dom.mapNotice.className = "notice bad";
+  } else if (finiteCount / Math.max(rows.length, 1) < 0.6) {
+    dom.mapNotice.textContent = "Low finite-value coverage for selected map variable; interpret carefully.";
+    dom.mapNotice.className = "notice bad";
+  } else {
+    dom.mapNotice.textContent = "Map updated.";
+    dom.mapNotice.className = "notice good";
+  }
 
   const layer = new deck.GeoJsonLayer({
     id: "county-layer",
     data: state.countiesGeo,
-    stroked: true,
     filled: true,
+    stroked: true,
     pickable: true,
     autoHighlight: true,
     lineWidthMinPixels: 0.15,
     getLineColor: (feature) => {
       const fips = feature.properties?.__fips;
-      const isSelected = fips === state.selectedCountyFips;
-      return isSelected ? [10, 10, 10, 255] : [245, 245, 245, 135];
+      return fips === state.selectedCountyFips ? [15, 15, 15, 255] : [245, 245, 245, 140];
     },
     getLineWidth: (feature) => {
       const fips = feature.properties?.__fips;
-      return fips === state.selectedCountyFips ? 1.25 : 0.2;
+      return fips === state.selectedCountyFips ? 1.2 : 0.2;
     },
     getFillColor: (feature) => {
       const fips = feature.properties?.__fips;
       const val = valueByFips.get(fips);
       if (!Number.isFinite(val)) return [226, 229, 232, 150];
-      const t = (val - minVal) / (maxVal - minVal || 1);
+      const t = (val - scale.min) / (scale.max - scale.min || 1);
       return paletteColor(t, palette);
     },
     onClick: (info) => {
@@ -441,9 +782,9 @@ function buildMap() {
       state.selectedCountyFips = fips;
       const row = rowMap.get(fips);
       if (!row) {
-        dom.countyDetails.textContent = `FIPS ${fips}: no row found for current year.`;
+        dom.countyDetails.textContent = `FIPS ${fips}: no row found for selected year.`;
       } else {
-        dom.countyDetails.textContent = `${row.county_name || "County"}, ${row.state_name || ""} | ${autoLabel(metricKey)}: ${formatValue(row[metricKey])}`;
+        dom.countyDetails.textContent = `${row.county_name || "County"}, ${row.state_name || ""} | ${autoLabel(variable)}: ${formatValue(row[variable])}`;
       }
       buildMap();
     }
@@ -454,11 +795,11 @@ function buildMap() {
     const fips = object.properties?.__fips;
     const row = rowMap.get(fips);
     if (!row) return { text: `FIPS ${fips}: no data` };
-    const val = row[metricKey];
+
     return {
       text:
         `${row.county_name || "County"}, ${row.state_name || ""}\n` +
-        `${autoLabel(metricKey)}: ${formatValue(val)}\n` +
+        `${autoLabel(variable)}: ${formatValue(row[variable])}\n` +
         `FIPS: ${row.county_fips}`
     };
   };
@@ -466,46 +807,76 @@ function buildMap() {
   if (!state.deck) {
     state.deck = new deck.DeckGL({
       container: "map",
-      initialViewState: state.mapViewState,
       controller: true,
+      viewState: state.viewState,
+      onViewStateChange: ({ viewState }) => {
+        state.viewState = { ...viewState };
+      },
       views: new deck.MapView({ repeat: false }),
       layers: [layer],
       getTooltip: tooltip
     });
   } else {
-    state.deck.setProps({ layers: [layer], getTooltip: tooltip });
+    state.deck.setProps({
+      layers: [layer],
+      getTooltip: tooltip,
+      viewState: state.viewState,
+      onViewStateChange: ({ viewState }) => {
+        state.viewState = { ...viewState };
+      }
+    });
   }
 }
 
 function buildScatter() {
-  const year = currentYear();
+  const year = selectedYear();
   const xKey = dom.scatterXSelect.value;
   const yKey = dom.scatterYSelect.value;
   const colorKey = dom.scatterColorSelect.value;
 
-  const rows = byYear(year).filter((r) =>
-    Number.isFinite(r[xKey]) && Number.isFinite(r[yKey])
-  );
-
-  const colorVals = rows.map((r) => r[colorKey]).filter((v) => Number.isFinite(v));
-  const cMin = colorVals.length > 0 ? Math.min(...colorVals) : 0;
-  const cMax = colorVals.length > 0 ? Math.max(...colorVals) : 1;
+  const rows = byYear(year).filter((row) => Number.isFinite(row[xKey]) && Number.isFinite(row[yKey]));
 
   dom.scatterTitle.textContent = `Scatter: ${autoLabel(yKey)} vs ${autoLabel(xKey)} (${year})`;
+
+  if (!rows.length) {
+    Plotly.react(
+      "scatter",
+      [],
+      {
+        margin: { t: 25, r: 10, b: 40, l: 60 },
+        annotations: [
+          {
+            text: "No finite rows for selected scatter variables.",
+            showarrow: false,
+            x: 0.5,
+            y: 0.5,
+            xref: "paper",
+            yref: "paper"
+          }
+        ]
+      },
+      { responsive: true, displayModeBar: false }
+    );
+    return;
+  }
+
+  const colorVals = rows.map((row) => row[colorKey]).filter((v) => Number.isFinite(v));
+  const cMin = colorVals.length ? Math.min(...colorVals) : 0;
+  const cMax = colorVals.length ? Math.max(...colorVals) : 1;
 
   Plotly.react(
     "scatter",
     [
       {
-        x: rows.map((r) => r[xKey]),
-        y: rows.map((r) => r[yKey]),
-        text: rows.map((r) => `${r.county_name || "County"}, ${r.state_name || ""}`),
+        x: rows.map((row) => row[xKey]),
+        y: rows.map((row) => row[yKey]),
+        text: rows.map((row) => `${row.county_name || "County"}, ${row.state_name || ""}`),
         type: "scattergl",
         mode: "markers",
         marker: {
           size: 6,
           opacity: 0.65,
-          color: rows.map((r) => r[colorKey]),
+          color: rows.map((row) => row[colorKey]),
           cmin: cMin,
           cmax: cMax,
           colorscale: "Viridis",
@@ -524,45 +895,48 @@ function buildScatter() {
 }
 
 function buildTrend() {
-  const metricKey = dom.mapMetricSelect.value;
-  const years = [...state.years].sort((a, b) => a - b);
+  const variable = dom.mapMetricSelect.value;
+  const yearly = [...state.years]
+    .sort((a, b) => a - b)
+    .map((year) => {
+      const values = byYear(year)
+        .map((row) => row[variable])
+        .filter((v) => Number.isFinite(v))
+        .sort((a, b) => a - b);
 
-  const trend = years.map((year) => {
-    const values = byYear(year).map((r) => r[metricKey]).filter((v) => Number.isFinite(v));
-    const sorted = [...values].sort((a, b) => a - b);
-    return {
-      year,
-      median: quantile(sorted, 0.5),
-      p90: quantile(sorted, 0.9)
-    };
-  });
+      return {
+        year,
+        median: quantile(values, 0.5),
+        p90: quantile(values, 0.9)
+      };
+    });
 
-  dom.trendTitle.textContent = `Year trend: ${autoLabel(metricKey)}`;
+  dom.trendTitle.textContent = `Year trend: ${autoLabel(variable)}`;
 
   Plotly.react(
     "trend",
     [
       {
-        x: trend.map((d) => d.year),
-        y: trend.map((d) => d.median),
+        x: yearly.map((row) => row.year),
+        y: yearly.map((row) => row.median),
         type: "scatter",
         mode: "lines+markers",
         name: "Median",
-        line: { color: "#12677f", width: 2 }
+        line: { color: "#116b84", width: 2 }
       },
       {
-        x: trend.map((d) => d.year),
-        y: trend.map((d) => d.p90),
+        x: yearly.map((row) => row.year),
+        y: yearly.map((row) => row.p90),
         type: "scatter",
         mode: "lines+markers",
         name: "P90",
-        line: { color: "#9d5c17", width: 2 }
+        line: { color: "#9f5d17", width: 2 }
       }
     ],
     {
       margin: { t: 30, r: 10, b: 50, l: 72 },
       xaxis: { title: "Year" },
-      yaxis: { title: autoLabel(metricKey) },
+      yaxis: { title: autoLabel(variable) },
       legend: { orientation: "h" }
     },
     { responsive: true, displayModeBar: false }
@@ -570,23 +944,24 @@ function buildTrend() {
 }
 
 function buildTopTable() {
-  const year = currentYear();
-  const metricKey = dom.mapMetricSelect.value;
+  const year = selectedYear();
+  const variable = dom.mapMetricSelect.value;
+
   const rows = byYear(year)
-    .filter((r) => Number.isFinite(r[metricKey]))
-    .sort((a, b) => b[metricKey] - a[metricKey])
+    .filter((row) => Number.isFinite(row[variable]))
+    .sort((a, b) => b[variable] - a[variable])
     .slice(0, 75);
 
-  dom.tableTitle.textContent = `Top counties by ${autoLabel(metricKey)} (${year})`;
+  dom.tableTitle.textContent = `Top counties by ${autoLabel(variable)} (${year})`;
 
   dom.topTableBody.innerHTML = rows
-    .map((r) => `
+    .map((row) => `
       <tr>
-        <td>${r.county_name || ""}</td>
-        <td>${r.state_name || ""}</td>
-        <td>${formatValue(r[metricKey])}</td>
-        <td>${formatValue(r.county_tariff_exposure_mean)}</td>
-        <td>${Number.isFinite(r.gop_share_20) ? fmt.pct1.format(r.gop_share_20) : ""}</td>
+        <td>${row.county_name || ""}</td>
+        <td>${row.state_name || ""}</td>
+        <td>${formatValue(row[variable])}</td>
+        <td>${formatValue(row.county_tariff_exposure_mean)}</td>
+        <td>${Number.isFinite(row.gop_share_20) ? fmt.pct1.format(row.gop_share_20) : ""}</td>
       </tr>
     `)
     .join("");
@@ -599,22 +974,6 @@ function refreshAllViews() {
   buildTopTable();
 }
 
-function refreshCustomVarList() {
-  const selected = dom.customVarList.value;
-  dom.customVarList.innerHTML = "";
-
-  [...state.customVars.keys()].sort().forEach((name) => {
-    const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = name;
-    dom.customVarList.appendChild(opt);
-  });
-
-  if (selected && state.customVars.has(selected)) {
-    dom.customVarList.value = selected;
-  }
-}
-
 function parseParams(text) {
   const cleaned = text.trim();
   if (!cleaned) return {};
@@ -623,11 +982,11 @@ function parseParams(text) {
   try {
     parsed = JSON.parse(cleaned);
   } catch (_err) {
-    throw new Error("Parameter block must be valid JSON, like {\"alpha\": 0.7}.");
+    throw new Error("Parameter block must be valid JSON, e.g. {\"alpha\": 0.75}.");
   }
 
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Parameters must be a JSON object.");
+    throw new Error("Parameter block must be a JSON object.");
   }
 
   const out = {};
@@ -642,48 +1001,134 @@ function parseParams(text) {
   return out;
 }
 
-function addOrUpdateCustomVariable() {
+function prepareCustomFormula() {
   const name = dom.customNameInput.value.trim();
   const expr = dom.customFormulaInput.value.trim();
 
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) {
     throw new Error("Variable name must start with a letter and use letters, numbers, or underscore.");
   }
-
   if (!expr) {
     throw new Error("Formula cannot be empty.");
   }
-
   if (state.numericVars.includes(name) && !state.customVars.has(name)) {
     throw new Error(`'${name}' already exists as a base variable.`);
   }
-
-  const params = parseParams(dom.customParamsInput.value);
   if (!mathApi || typeof mathApi.compile !== "function") {
-    throw new Error("Formula engine failed to load. Reload the page and retry.");
+    throw new Error("Formula engine failed to load. Reload the page.");
   }
 
+  const params = parseParams(dom.customParamsInput.value);
   const compiled = mathApi.compile(expr);
+
+  return { name, expr, params, compiled };
+}
+
+function evaluateCustomFormula(compiled, params) {
+  const values = new Array(state.panel.length).fill(null);
+  const sample = [];
+  let finiteCount = 0;
+  let nonFiniteCount = 0;
 
   for (let i = 0; i < state.panel.length; i += 1) {
     const row = state.panel[i];
     const scope = { ...params };
 
-    state.numericVars.forEach((k) => {
-      const v = row[k];
-      if (Number.isFinite(v)) scope[k] = v;
+    state.numericVars.forEach((key) => {
+      const value = row[key];
+      if (Number.isFinite(value)) {
+        scope[key] = value;
+      }
     });
 
-    let val;
+    let evaluated;
     try {
-      val = compiled.evaluate(scope);
+      evaluated = compiled.evaluate(scope);
     } catch (err) {
-      throw new Error(`Formula error around row ${i + 1}: ${err.message}`);
+      throw new Error(`Formula error at row ${i + 1}: ${err.message}`);
     }
 
-    const num = Number(val);
-    row[name] = Number.isFinite(num) ? num : null;
+    const number = Number(evaluated);
+    if (Number.isFinite(number)) {
+      values[i] = number;
+      finiteCount += 1;
+      if (sample.length < 5) {
+        sample.push(`${row.county_name || row.county_fips} (${row.year}): ${formatValue(number)}`);
+      }
+    } else {
+      values[i] = null;
+      nonFiniteCount += 1;
+    }
   }
+
+  return {
+    values,
+    finiteCount,
+    nonFiniteCount,
+    sample
+  };
+}
+
+function upsertVariableMeta(name, label, group = "custom") {
+  state.variableMeta = state.variableMeta.filter((row) => row.name !== name);
+  state.variableMeta.push({
+    name,
+    label,
+    group,
+    allowed_transforms: ["none", "log", "zscore", "rank"],
+    is_custom_allowed: true
+  });
+  state.variableMetaMap = new Map(state.variableMeta.map((row) => [row.name, row]));
+}
+
+function previewCustomVariable() {
+  const { name, expr, params, compiled } = prepareCustomFormula();
+  const result = evaluateCustomFormula(compiled, params);
+  const sampleText = result.sample.length ? result.sample.join(" | ") : "no finite sample values";
+
+  dom.customVarPreview.textContent =
+    `Preview ${name}: finite ${result.finiteCount.toLocaleString()}, non-finite ${result.nonFiniteCount.toLocaleString()} | sample: ${sampleText}`;
+  dom.customVarPreview.classList.remove("bad");
+  dom.customVarPreview.classList.add("good");
+
+  return { name, expr, params, result };
+}
+
+function rebuildVariableSelectorsAfterCustom(selectedVar = null) {
+  const options = optionsFromMetadata();
+
+  replaceOptions(dom.mapMetricSelect, options, selectedVar || dom.mapMetricSelect.value);
+  replaceOptions(dom.scatterXSelect, options, dom.scatterXSelect.value);
+  replaceOptions(dom.scatterYSelect, options, dom.scatterYSelect.value);
+  replaceOptions(dom.scatterColorSelect, options, dom.scatterColorSelect.value);
+  replaceOptions(dom.regDependentSelect, options, dom.regDependentSelect.value);
+
+  const selectedPreds = Array.from(dom.regPredictorSelect.selectedOptions).map((opt) => opt.value);
+  replaceOptions(dom.regPredictorSelect, options, null, selectedPreds);
+}
+
+function refreshCustomVarList() {
+  const selected = dom.customVarList.value;
+  dom.customVarList.innerHTML = "";
+
+  [...state.customVars.keys()].sort().forEach((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    dom.customVarList.appendChild(option);
+  });
+
+  if (selected && state.customVars.has(selected)) {
+    dom.customVarList.value = selected;
+  }
+}
+
+function applyCustomVariable() {
+  const { name, expr, params, result } = previewCustomVariable();
+
+  state.panel.forEach((row, idx) => {
+    row[name] = result.values[idx];
+  });
 
   state.customVars.set(name, { expr, params });
   if (!state.numericVars.includes(name)) {
@@ -692,20 +1137,28 @@ function addOrUpdateCustomVariable() {
   }
 
   KNOWN_LABELS[name] = `${name} (custom)`;
+  upsertVariableMeta(name, `${name} (custom)`, "custom");
 
   refreshCustomVarList();
-  rebuildVariableControls();
-  refreshAllViews();
+  rebuildVariableSelectorsAfterCustom(name);
+  dom.mapMetricSelect.value = name;
 
-  dom.customVarFeedback.textContent = `Saved '${name}' using formula: ${expr}`;
+  dom.customVarFeedback.textContent =
+    `Saved '${name}' with ${result.finiteCount.toLocaleString()} finite values and ${result.nonFiniteCount.toLocaleString()} non-finite values.`;
   dom.customVarFeedback.classList.remove("bad");
   dom.customVarFeedback.classList.add("good");
+
+  refreshAllViews();
+  syncUrlState();
 }
 
-function removeSelectedCustomVariable() {
+function removeCustomVariable() {
   const name = dom.customVarList.value;
   if (!name) {
-    throw new Error("Choose a custom variable to remove.");
+    throw new Error("Select a custom variable to remove.");
+  }
+  if (!state.customVars.has(name)) {
+    throw new Error(`'${name}' is not a custom variable.`);
   }
 
   state.panel.forEach((row) => {
@@ -713,16 +1166,20 @@ function removeSelectedCustomVariable() {
   });
 
   state.customVars.delete(name);
-  state.numericVars = state.numericVars.filter((v) => v !== name);
+  state.numericVars = state.numericVars.filter((key) => key !== name);
   delete KNOWN_LABELS[name];
+  state.variableMeta = state.variableMeta.filter((row) => row.name !== name);
+  state.variableMetaMap = new Map(state.variableMeta.map((row) => [row.name, row]));
 
   refreshCustomVarList();
-  rebuildVariableControls();
-  refreshAllViews();
+  rebuildVariableSelectorsAfterCustom(DEFAULTS.mapVar);
 
   dom.customVarFeedback.textContent = `Removed '${name}'.`;
   dom.customVarFeedback.classList.remove("bad");
   dom.customVarFeedback.classList.add("good");
+
+  refreshAllViews();
+  syncUrlState();
 }
 
 function selectedRegressionRows() {
@@ -735,103 +1192,409 @@ function selectedRegressionRows() {
 function parsePredictorList(text) {
   return text
     .split(",")
-    .map((s) => s.trim())
+    .map((x) => x.trim())
     .filter(Boolean);
 }
 
-function runOls(yKey, xKeys, includeIntercept) {
-  if (!jStatApi || typeof jStatApi.multiply !== "function") {
-    throw new Error("Regression engine failed to load. Reload the page and retry.");
+function regressionPredictors() {
+  const chipPredictors = Array.from(dom.regPredictorSelect.selectedOptions).map((opt) => opt.value);
+  const advanced = parsePredictorList(dom.regPredictorsAdvanced.value || "");
+
+  if (chipPredictors.length > 0) {
+    return [...new Set([...chipPredictors, ...advanced])];
   }
+  return [...new Set(advanced)];
+}
+
+function zeroMatrix(rows, cols) {
+  return Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
+}
+
+function transpose(matrix) {
+  if (!Array.isArray(matrix) || matrix.length === 0) return [];
+  const rows = matrix.length;
+  const cols = matrix[0].length;
+  const out = zeroMatrix(cols, rows);
+  for (let i = 0; i < rows; i += 1) {
+    for (let j = 0; j < cols; j += 1) {
+      out[j][i] = matrix[i][j];
+    }
+  }
+  return out;
+}
+
+function multiply(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length === 0 || b.length === 0) return null;
+  const aRows = a.length;
+  const aCols = a[0].length;
+  const bRows = b.length;
+  const bCols = b[0].length;
+
+  if (aCols !== bRows) return null;
+
+  const out = zeroMatrix(aRows, bCols);
+  for (let i = 0; i < aRows; i += 1) {
+    for (let j = 0; j < bCols; j += 1) {
+      let sum = 0;
+      for (let k = 0; k < aCols; k += 1) {
+        sum += a[i][k] * b[k][j];
+      }
+      out[i][j] = sum;
+    }
+  }
+  return out;
+}
+
+function scalarMultiply(matrix, scalar) {
+  return matrix.map((row) => row.map((v) => v * scalar));
+}
+
+function addInPlace(target, addition) {
+  for (let i = 0; i < target.length; i += 1) {
+    for (let j = 0; j < target[0].length; j += 1) {
+      target[i][j] += addition[i][j];
+    }
+  }
+}
+
+function outer(vecA, vecB) {
+  const out = zeroMatrix(vecA.length, vecB.length);
+  for (let i = 0; i < vecA.length; i += 1) {
+    for (let j = 0; j < vecB.length; j += 1) {
+      out[i][j] = vecA[i] * vecB[j];
+    }
+  }
+  return out;
+}
+
+function invertMatrix(matrix) {
+  const n = matrix.length;
+  if (!n || matrix.some((row) => row.length !== n)) return null;
+
+  const a = matrix.map((row, i) => [
+    ...row.map((v) => (Number.isFinite(v) ? v : NaN)),
+    ...Array.from({ length: n }, (_x, j) => (i === j ? 1 : 0))
+  ]);
+
+  const eps = 1e-12;
+
+  for (let col = 0; col < n; col += 1) {
+    let pivotRow = col;
+    let maxAbs = Math.abs(a[col][col]);
+
+    for (let row = col + 1; row < n; row += 1) {
+      const absVal = Math.abs(a[row][col]);
+      if (absVal > maxAbs) {
+        maxAbs = absVal;
+        pivotRow = row;
+      }
+    }
+
+    if (!Number.isFinite(maxAbs) || maxAbs < eps) {
+      return null;
+    }
+
+    if (pivotRow !== col) {
+      const temp = a[col];
+      a[col] = a[pivotRow];
+      a[pivotRow] = temp;
+    }
+
+    const pivot = a[col][col];
+    if (!Number.isFinite(pivot) || Math.abs(pivot) < eps) {
+      return null;
+    }
+
+    for (let j = 0; j < 2 * n; j += 1) {
+      a[col][j] /= pivot;
+    }
+
+    for (let row = 0; row < n; row += 1) {
+      if (row === col) continue;
+      const factor = a[row][col];
+      for (let j = 0; j < 2 * n; j += 1) {
+        a[row][j] -= factor * a[col][j];
+      }
+    }
+  }
+
+  const inv = a.map((row) => row.slice(n));
+  const allFinite = inv.every((row) => row.every((v) => Number.isFinite(v)));
+  return allFinite ? inv : null;
+}
+
+function normalCdf(x) {
+  const sign = x < 0 ? -1 : 1;
+  const z = Math.abs(x) / Math.sqrt(2);
+  const t = 1 / (1 + 0.3275911 * z);
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const erf =
+    1 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t) * Math.exp(-z * z);
+  return 0.5 * (1 + sign * erf);
+}
+
+function twoSidedPValue(tStat, dof) {
+  if (!Number.isFinite(tStat)) return null;
+
+  if (jStatApi && jStatApi.studentt && typeof jStatApi.studentt.cdf === "function" && Number.isFinite(dof) && dof > 0) {
+    const cdf = jStatApi.studentt.cdf(Math.abs(tStat), dof);
+    return 2 * (1 - cdf);
+  }
+
+  return 2 * (1 - normalCdf(Math.abs(tStat)));
+}
+
+function criticalValue95(dof) {
+  if (jStatApi && jStatApi.studentt && typeof jStatApi.studentt.inv === "function" && Number.isFinite(dof) && dof > 0) {
+    return jStatApi.studentt.inv(0.975, dof);
+  }
+  return 1.96;
+}
+
+function matrixAllFinite(matrix) {
+  return matrix.every((row) => row.every((v) => Number.isFinite(v)));
+}
+
+function computeVcovOls(invXtX, sse, dof) {
+  const sigma2 = sse / dof;
+  return scalarMultiply(invXtX, sigma2);
+}
+
+function computeVcovHC1(X, residuals, invXtX, n, dof) {
+  const k = invXtX.length;
+  const meat = zeroMatrix(k, k);
+
+  for (let i = 0; i < X.length; i += 1) {
+    const xi = X[i];
+    const e2 = residuals[i] ** 2;
+    for (let a = 0; a < k; a += 1) {
+      for (let b = 0; b < k; b += 1) {
+        meat[a][b] += e2 * xi[a] * xi[b];
+      }
+    }
+  }
+
+  const left = multiply(invXtX, meat);
+  const vcov = multiply(left, invXtX);
+  if (!vcov) return null;
+  return scalarMultiply(vcov, n / dof);
+}
+
+function computeVcovCluster(X, residuals, clusters, invXtX, n, dof) {
+  const warnings = [];
+  const k = invXtX.length;
+  const grouped = new Map();
+
+  for (let i = 0; i < X.length; i += 1) {
+    const clusterId = clusters[i] || "__missing_cluster__";
+    if (!grouped.has(clusterId)) {
+      grouped.set(clusterId, Array.from({ length: k }, () => 0));
+    }
+    const vec = grouped.get(clusterId);
+    const e = residuals[i];
+    const xi = X[i];
+    for (let j = 0; j < k; j += 1) {
+      vec[j] += xi[j] * e;
+    }
+  }
+
+  const g = grouped.size;
+  if (g <= 1) {
+    return {
+      vcov: null,
+      seModeUsed: "hc1",
+      warnings: ["State clusters <= 1; fell back to HC1 robust SE."]
+    };
+  }
+
+  const meat = zeroMatrix(k, k);
+  grouped.forEach((vec) => {
+    const contrib = outer(vec, vec);
+    addInPlace(meat, contrib);
+  });
+
+  const left = multiply(invXtX, meat);
+  const vcovBase = multiply(left, invXtX);
+  if (!vcovBase) {
+    return {
+      vcov: null,
+      seModeUsed: "hc1",
+      warnings: ["Clustered variance matrix failed; fell back to HC1 robust SE."]
+    };
+  }
+
+  const correction = (g / (g - 1)) * ((n - 1) / dof);
+  const vcov = scalarMultiply(vcovBase, correction);
+
+  if (!matrixAllFinite(vcov)) {
+    warnings.push("Clustered variance matrix had non-finite entries; fell back to HC1 robust SE.");
+    return {
+      vcov: null,
+      seModeUsed: "hc1",
+      warnings
+    };
+  }
+
+  return {
+    vcov,
+    seModeUsed: "cluster_state",
+    warnings
+  };
+}
+
+function runOls(dep, predictors, includeIntercept, seMode) {
+  const warnings = [];
 
   const rows = selectedRegressionRows();
   const cleaned = rows.filter((row) => {
-    if (!Number.isFinite(row[yKey])) return false;
-    return xKeys.every((x) => Number.isFinite(row[x]));
+    if (!Number.isFinite(row[dep])) return false;
+    return predictors.every((key) => Number.isFinite(row[key]));
   });
 
-  if (cleaned.length < 30) {
-    throw new Error(`Not enough complete rows for regression (${cleaned.length}).`);
+  const k = predictors.length + (includeIntercept ? 1 : 0);
+  const minN = Math.max(40, k + 10);
+  if (cleaned.length < minN) {
+    throw new Error(`Not enough complete rows for regression (${cleaned.length}, need at least ${minN}).`);
   }
 
-  const y = cleaned.map((row) => [row[yKey]]);
-  const x = cleaned.map((row) => {
-    const values = xKeys.map((k) => row[k]);
-    return includeIntercept ? [1, ...values] : values;
+  const X = cleaned.map((row) => {
+    const vals = predictors.map((key) => row[key]);
+    return includeIntercept ? [1, ...vals] : vals;
   });
+  const y = cleaned.map((row) => [row[dep]]);
+  const names = includeIntercept ? ["(Intercept)", ...predictors] : [...predictors];
 
-  const names = includeIntercept ? ["(Intercept)", ...xKeys] : [...xKeys];
-
-  let xTxInv;
-  let beta;
-  try {
-    const xT = jStatApi.transpose(x);
-    const xTx = jStatApi.multiply(xT, x);
-    xTxInv = jStatApi.inv(xTx);
-    const xTy = jStatApi.multiply(xT, y);
-    beta = jStatApi.multiply(xTxInv, xTy);
-  } catch (_err) {
-    throw new Error("X'X is singular. Drop redundant predictors or reduce formula complexity.");
+  const Xt = transpose(X);
+  const XtX = multiply(Xt, X);
+  if (!XtX) {
+    throw new Error("Could not form X'X matrix. Check predictor dimensions.");
   }
 
-  const yHat = jStatApi.multiply(x, beta);
-  const residuals = y.map((row, i) => row[0] - yHat[i][0]);
-  const sse = residuals.reduce((acc, v) => acc + v * v, 0);
+  const invXtX = invertMatrix(XtX);
+  if (!invXtX) {
+    throw new Error("X'X is singular. Remove collinear predictors.");
+  }
+
+  const XtY = multiply(Xt, y);
+  const beta = multiply(invXtX, XtY);
+
+  if (!beta || !matrixAllFinite(beta)) {
+    throw new Error("Regression coefficients are non-finite. Adjust predictors.");
+  }
+
+  const yHat = multiply(X, beta);
+  if (!yHat || !matrixAllFinite(yHat)) {
+    throw new Error("Predicted values are non-finite. Adjust predictors.");
+  }
+
+  const residuals = y.map((row, idx) => row[0] - yHat[idx][0]);
+  const sse = residuals.reduce((acc, e) => acc + e * e, 0);
   const yMean = mean(y.map((row) => row[0]));
   const sst = y.reduce((acc, row) => acc + (row[0] - yMean) ** 2, 0);
 
   const n = cleaned.length;
-  const p = names.length;
-  const dof = n - p;
+  const dof = n - k;
   if (dof <= 0) {
-    throw new Error(`Degrees of freedom <= 0 (n=${n}, p=${p}).`);
+    throw new Error(`Degrees of freedom <= 0 (n=${n}, k=${k}).`);
   }
 
-  const sigma2 = sse / dof;
-  const vcov = jStatApi.multiply(sigma2, xTxInv);
+  let seModeUsed = seMode;
+  let vcov = null;
 
-  const coefRows = names.map((term, i) => {
-    const est = beta[i][0];
-    const se = Math.sqrt(Math.max(vcov[i][i], 0));
-    const t = se > 0 ? est / se : null;
-    const pVal = Number.isFinite(t)
-      ? 2 * (1 - jStatApi.studentt.cdf(Math.abs(t), dof))
-      : null;
+  if (seMode === "ols") {
+    vcov = computeVcovOls(invXtX, sse, dof);
+  } else if (seMode === "cluster_state") {
+    const clusters = cleaned.map((row) => row.state_name || "");
+    const clusterResult = computeVcovCluster(X, residuals, clusters, invXtX, n, dof);
+    warnings.push(...clusterResult.warnings);
 
-    return { term, estimate: est, se, t, p: pVal };
+    if (clusterResult.vcov) {
+      vcov = clusterResult.vcov;
+      seModeUsed = clusterResult.seModeUsed;
+    } else {
+      vcov = computeVcovHC1(X, residuals, invXtX, n, dof);
+      seModeUsed = "hc1";
+    }
+  } else {
+    vcov = computeVcovHC1(X, residuals, invXtX, n, dof);
+    seModeUsed = "hc1";
+  }
+
+  if (!vcov || !matrixAllFinite(vcov)) {
+    throw new Error("Variance matrix is non-finite. Try fewer predictors.");
+  }
+
+  const tCrit = criticalValue95(dof);
+  const coefficients = names.map((term, idx) => {
+    const estimate = beta[idx][0];
+    const variance = vcov[idx][idx];
+    const se = variance > 0 ? Math.sqrt(variance) : 0;
+    const tStat = se > 0 ? estimate / se : null;
+    const pValue = tStat === null ? null : twoSidedPValue(tStat, dof);
+
+    return {
+      term,
+      estimate,
+      std_error: se,
+      t_stat: tStat,
+      p_value: pValue,
+      ci_low: se > 0 ? estimate - tCrit * se : null,
+      ci_high: se > 0 ? estimate + tCrit * se : null
+    };
   });
 
   const r2 = sst > 0 ? 1 - sse / sst : null;
+  const adjR2 = r2 === null ? null : 1 - (1 - r2) * ((n - 1) / dof);
 
   return {
     n,
-    p,
+    k,
     dof,
     r2,
-    dep: yKey,
-    predictors: xKeys,
-    includeIntercept,
-    coefficients: coefRows
+    adj_r2: adjR2,
+    se_type: seModeUsed,
+    warnings,
+    dependent: dep,
+    predictors,
+    include_intercept: includeIntercept,
+    coefficients
   };
 }
 
 function renderRegressionResult(result) {
   dom.regSummary.innerHTML = [
-    `<strong>Dependent:</strong> ${autoLabel(result.dep)}`,
+    `<strong>Dependent:</strong> ${autoLabel(result.dependent)}`,
     `<strong>N:</strong> ${result.n.toLocaleString()}`,
-    `<strong>k:</strong> ${result.p}`,
-    `<strong>R²:</strong> ${result.r2 === null ? "NA" : fmt.num3.format(result.r2)}`,
-    `<strong>Sample:</strong> ${dom.regScopeSelect.options[dom.regScopeSelect.selectedIndex].text}`
+    `<strong>k:</strong> ${result.k}`,
+    `<strong>R2:</strong> ${result.r2 === null ? "NA" : fmt.num3.format(result.r2)}`,
+    `<strong>Adj R2:</strong> ${result.adj_r2 === null ? "NA" : fmt.num3.format(result.adj_r2)}`,
+    `<strong>SE:</strong> ${result.se_type}`
   ].join(" | ");
 
+  if (result.warnings.length) {
+    dom.regWarnings.textContent = result.warnings.join(" ");
+    dom.regWarnings.classList.remove("good");
+    dom.regWarnings.classList.add("bad");
+  } else {
+    dom.regWarnings.textContent = "Model estimated successfully.";
+    dom.regWarnings.classList.remove("bad");
+    dom.regWarnings.classList.add("good");
+  }
+
   dom.regResultBody.innerHTML = result.coefficients
-    .map((c) => `
+    .map((coef) => `
       <tr>
-        <td>${c.term}</td>
-        <td>${formatValue(c.estimate)}</td>
-        <td>${formatValue(c.se)}</td>
-        <td>${c.t === null ? "NA" : fmt.num2.format(c.t)}</td>
-        <td>${c.p === null ? "NA" : c.p < 0.001 ? "<0.001" : fmt.num3.format(c.p)}</td>
+        <td>${coef.term}</td>
+        <td>${formatValue(coef.estimate)}</td>
+        <td>${formatValue(coef.std_error)}</td>
+        <td>${coef.t_stat === null ? "NA" : fmt.num2.format(coef.t_stat)}</td>
+        <td>${coef.p_value === null ? "NA" : coef.p_value < 0.001 ? "<0.001" : fmt.num3.format(coef.p_value)}</td>
+        <td>${formatValue(coef.ci_low)}</td>
+        <td>${formatValue(coef.ci_high)}</td>
       </tr>
     `)
     .join("");
@@ -839,36 +1602,38 @@ function renderRegressionResult(result) {
 
 function runRegressionFromUi() {
   const dep = dom.regDependentSelect.value;
-  const predictors = parsePredictorList(dom.regPredictorsInput.value);
+  let predictors = regressionPredictors();
 
   if (!dep) {
-    throw new Error("Pick a dependent variable.");
+    throw new Error("Choose a dependent variable.");
   }
 
-  if (predictors.length === 0) {
-    throw new Error("Add at least one predictor.");
+  predictors = [...new Set(predictors)];
+  predictors = predictors.filter((key) => key !== dep);
+
+  if (!predictors.length) {
+    throw new Error("Choose at least one predictor (chips or advanced list).");
   }
 
-  const known = new Set(state.numericVars);
-  const unknown = predictors.filter((x) => !known.has(x));
-  if (unknown.length > 0) {
-    throw new Error(`Unknown predictors: ${unknown.join(", ")}`);
-  }
-
-  if (!known.has(dep)) {
-    throw new Error(`Unknown dependent variable: ${dep}`);
+  const unknown = predictors.filter((key) => !state.numericVars.includes(key));
+  if (unknown.length) {
+    throw new Error(`Unknown predictor(s): ${unknown.join(", ")}`);
   }
 
   const includeIntercept = dom.regInterceptCheck.checked;
-  const result = runOls(dep, predictors, includeIntercept);
+  const seMode = dom.regSeModeSelect.value;
+  const result = runOls(dep, predictors, includeIntercept, seMode);
   renderRegressionResult(result);
+
+  syncUrlState();
 }
 
-function attachHandlers() {
+function registerHandlers() {
   [
     dom.yearSelect,
     dom.mapMetricSelect,
     dom.mapTransformSelect,
+    dom.mapScaleModeSelect,
     dom.mapPaletteSelect,
     dom.scatterXSelect,
     dom.scatterYSelect,
@@ -876,24 +1641,42 @@ function attachHandlers() {
   ].forEach((el) => {
     el.addEventListener("change", () => {
       refreshAllViews();
+      syncUrlState();
     });
+  });
+
+  dom.regPresetSelect.addEventListener("change", () => {
+    applyPresetToControls(dom.regPresetSelect.value);
+    syncUrlState();
   });
 
   dom.resetMapBtn.addEventListener("click", () => {
     state.selectedCountyFips = null;
+    state.viewState = { ...DEFAULT_VIEW_STATE };
     dom.countyDetails.textContent = "Click a county to pin details here.";
+
     if (state.deck) {
-      state.deck.setProps({
-        initialViewState: state.mapViewState,
-        viewState: state.mapViewState
-      });
+      state.deck.setProps({ viewState: state.viewState });
     }
+
     buildMap();
+    syncUrlState();
+  });
+
+  dom.previewCustomVarBtn.addEventListener("click", () => {
+    try {
+      previewCustomVariable();
+      dom.customVarFeedback.textContent = "";
+    } catch (err) {
+      dom.customVarPreview.textContent = err.message;
+      dom.customVarPreview.classList.remove("good");
+      dom.customVarPreview.classList.add("bad");
+    }
   });
 
   dom.addCustomVarBtn.addEventListener("click", () => {
     try {
-      addOrUpdateCustomVariable();
+      applyCustomVariable();
     } catch (err) {
       dom.customVarFeedback.textContent = err.message;
       dom.customVarFeedback.classList.remove("good");
@@ -903,12 +1686,25 @@ function attachHandlers() {
 
   dom.removeCustomVarBtn.addEventListener("click", () => {
     try {
-      removeSelectedCustomVariable();
+      removeCustomVariable();
     } catch (err) {
       dom.customVarFeedback.textContent = err.message;
       dom.customVarFeedback.classList.remove("good");
       dom.customVarFeedback.classList.add("bad");
     }
+  });
+
+  [
+    dom.regScopeSelect,
+    dom.regDependentSelect,
+    dom.regPredictorSelect,
+    dom.regPredictorsAdvanced,
+    dom.regSeModeSelect,
+    dom.regInterceptCheck
+  ].forEach((el) => {
+    el.addEventListener("change", () => {
+      syncUrlState();
+    });
   });
 
   dom.runRegBtn.addEventListener("click", () => {
@@ -920,43 +1716,46 @@ function attachHandlers() {
       dom.regSummary.textContent = err.message;
       dom.regSummary.classList.remove("good");
       dom.regSummary.classList.add("bad");
+      dom.regWarnings.textContent = "";
       dom.regResultBody.innerHTML = "";
     }
   });
 }
 
-function buildYearSelector() {
-  dom.yearSelect.innerHTML = "";
-  state.years.forEach((year) => {
-    const opt = document.createElement("option");
-    opt.value = String(year);
-    opt.textContent = String(year);
-    dom.yearSelect.appendChild(opt);
-  });
-  dom.yearSelect.value = String(state.latestYear);
-}
-
 async function loadCoreData() {
   setStatus("Loading data files...");
 
-  const [panelJson, yearSummary, validationChecks, meta] = await Promise.all([
+  const [panelJson, yearSummaryJson, validationJson, metaJson, variablesJson, presetsJson] = await Promise.all([
     fetchJson(`${DATA_DIR}/panel.json`),
     fetchJson(`${DATA_DIR}/year_summary.json`).catch(() => []),
     fetchJson(`${DATA_DIR}/validation_checks.json`).catch(() => []),
-    fetchJson(`${DATA_DIR}/meta.json`)
+    fetchJson(`${DATA_DIR}/meta.json`),
+    fetchJson(`${DATA_DIR}/variables.json`).catch(() => []),
+    fetchJson(`${DATA_DIR}/regression_presets.json`).catch(() => [])
   ]);
 
   state.panel = parsePanelRows(panelJson);
-  state.yearSummary = yearSummary;
-  state.validationChecks = validationChecks;
-  state.meta = meta;
-
-  state.years = [...new Set(state.panel.map((r) => r.year).filter((v) => Number.isFinite(v)))].sort((a, b) => a - b);
-  state.latestYear = Number.isFinite(meta.latest_year)
-    ? Number(meta.latest_year)
-    : Math.max(...state.years);
-
+  state.yearSummary = yearSummaryJson;
+  state.validationChecks = validationJson;
+  state.meta = metaJson;
   state.numericVars = detectNumericVars(state.panel).sort();
+
+  const normalizedMeta = normalizeVariableMetadata(variablesJson).filter((row) =>
+    state.numericVars.includes(row.name)
+  );
+  state.variableMeta = normalizedMeta.length ? normalizedMeta : buildFallbackVariableMetadata();
+  state.variableMetaMap = new Map(state.variableMeta.map((row) => [row.name, row]));
+
+  const normalizedPresets = normalizePresets(presetsJson).filter((preset) =>
+    state.numericVars.includes(preset.dependent) &&
+    preset.predictors.every((key) => state.numericVars.includes(key))
+  );
+  state.regressionPresets = normalizedPresets.length ? normalizedPresets : fallbackPresets();
+
+  state.years = [...new Set(state.panel.map((row) => row.year).filter((year) => Number.isFinite(year)))].sort((a, b) => a - b);
+  state.latestYear = Number.isFinite(metaJson.latest_year)
+    ? Number(metaJson.latest_year)
+    : Math.max(...state.years);
 
   const topo = await fetchJson("https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json");
   state.countiesGeo = topojson
@@ -974,32 +1773,42 @@ async function loadCoreData() {
     })
     .filter((feature) => {
       const fips = feature.properties?.__fips;
-      if (!fips) return false;
-      return !EXCLUDE_STATEFP.has(fips.slice(0, 2));
+      return fips && !EXCLUDE_STATEFP.has(fips.slice(0, 2));
     });
 }
 
 async function init() {
   try {
     await loadCoreData();
-    buildYearSelector();
-    rebuildVariableControls();
+
+    buildSelectors();
+
+    const queryState = readUrlState();
+    applyUrlState(queryState);
+
+    if (dom.regPresetSelect.options.length > 0 && !queryState.dep) {
+      applyPresetToControls(dom.regPresetSelect.value);
+    }
+
     buildStatusBlock();
     refreshCustomVarList();
     refreshAllViews();
-    attachHandlers();
+    registerHandlers();
+    syncUrlState();
 
     setStatus("Loaded", "good");
 
     try {
       runRegressionFromUi();
     } catch (_err) {
-      dom.regSummary.textContent = "Ready. Set variables and click Run regression.";
+      dom.regSummary.textContent = "Ready. Select controls and click Run regression.";
     }
   } catch (err) {
     console.error(err);
     setStatus("Load failed", "bad");
-    dom.statusBlock.innerHTML = `<p class="bad">${err.message}</p><p>Run <code>source('code/build_site_data.R')</code> and redeploy <code>site/</code>.</p>`;
+    dom.statusBlock.innerHTML =
+      `<p class="bad">${err.message}</p>` +
+      `<p>Run <code>source('code/build_site_data.R')</code> and redeploy <code>site/</code>.</p>`;
   }
 }
 

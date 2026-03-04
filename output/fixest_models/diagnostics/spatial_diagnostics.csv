@@ -1,0 +1,2 @@
+check,status,detail
+sfdep_status,warning,sfdep diagnostics failed: Empty neighbour sets found

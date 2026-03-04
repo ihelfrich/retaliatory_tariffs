@@ -53,6 +53,10 @@ cran_packages <- c(
   "broom",
   "sandwich",
   "lmtest",
+  "fixest",
+  "biscale",
+  "modelsummary",
+  "quarto",
   "remotes",
   "tibble"
 )
@@ -73,6 +77,25 @@ if (!requireNamespace("concordance", quietly = TRUE)) {
     message("Missing GitHub package: concordance (insongkim/concordance)")
   } else {
     remotes::install_github("insongkim/concordance")
+  }
+}
+
+optional_packages <- c("sfdep")
+missing_optional <- setdiff(optional_packages, rownames(installed.packages()))
+if (length(missing_optional) > 0) {
+  if (check_only) {
+    message("Optional packages not installed: ", paste(missing_optional, collapse = ", "))
+  } else {
+    for (pkg in missing_optional) {
+      tryCatch(
+        {
+          install.packages(pkg)
+        },
+        error = function(e) {
+          message("Optional package install failed for ", pkg, ": ", e$message)
+        }
+      )
+    }
   }
 }
 

@@ -32,9 +32,15 @@ where:
    `source("code/build_analysis_outputs.R")`
 6. Build site data for the web explorer:
    `source("code/build_site_data.R")`
-7. Build presentation-ready maps and tables:
+7. Build bivariate research maps:
+   `source("code/build_bivariate_maps.R")`
+8. Build fixed-effects model tables:
+   `source("code/build_fixest_models.R")`
+9. Build presentation-ready maps and tables:
    `source("code/comprehensive_results_geospatial.R")`
-8. Launch the visual explorer:
+10. Render the report (optional):
+   `quarto::quarto_render("analysis/report.qmd")`
+11. Launch the visual explorer:
    `shiny::runApp("app.R")`
 
 Optional one-shot runner:
@@ -79,6 +85,13 @@ Notes:
 - Web explorer:
   - `site/index.html`
   - `site/data/`
+- Advanced geospatial outputs:
+  - `output/advanced_maps/figures/`
+  - `output/advanced_maps/tables/`
+- Fixest model outputs:
+  - `output/fixest_models/tables/`
+  - `output/fixest_models/diagnostics/`
+  - `output/fixest_models/reports/`
 - Maps and figures:
   - `output/overhaul/figures/`
   - `output/comprehensive_results/figures/`
@@ -100,12 +113,14 @@ Deployment workflow:
 How it works:
 
 1. Run `source("code/build_site_data.R")` locally before pushing.
-2. On push to `main`, GitHub Actions uploads `site/` as the Pages artifact.
-3. GitHub deploys that artifact to Pages.
+2. On push to `main`, GitHub Actions deploys production at the root URL.
+3. On push to `staging`, GitHub Actions deploys a preview under `/staging/`.
+4. Deploy is gated by smoke checks (site files + JSON schema presence + JS syntax).
 
 Expected URL for this repository:
 
 - `https://ihelfrich.github.io/retaliatory_tariffs/`
+- `https://ihelfrich.github.io/retaliatory_tariffs/staging/` (preview lane)
 
 ## Legacy build scripts
 
