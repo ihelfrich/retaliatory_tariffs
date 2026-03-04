@@ -89,9 +89,9 @@ Deployment workflow:
 
 How it works:
 
-1. On push to `main`, GitHub Actions runs `code/build_site_data.R`.
-2. The workflow uploads `site/` as the Pages artifact.
-3. GitHub deploys the artifact to Pages.
+1. Run `source("code/build_site_data.R")` locally before pushing.
+2. On push to `main`, GitHub Actions uploads `site/` as the Pages artifact.
+3. GitHub deploys that artifact to Pages.
 
 Expected URL for this repository:
 
