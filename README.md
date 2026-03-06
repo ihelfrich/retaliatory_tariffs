@@ -46,6 +46,9 @@ where:
 Optional one-shot runner:
 `source("run_all.R")`
 
+Optional one-shot runner with notebook rendering:
+`Rscript run_all.R --build-teaching`
+
 ## Portable local run (fresh clone)
 
 From a terminal, this now works without any machine-specific paths:
@@ -53,8 +56,16 @@ From a terminal, this now works without any machine-specific paths:
 1. `Rscript setup_project.R`
 2. `Rscript run_all.R`
 3. Optional preflight only: `Rscript run_all.R --check-only`
+4. Optional include client-facing notebook render: `Rscript run_all.R --build-teaching`
 
 Core scripts depend on standard project files (`.R`, `.csv`, `.txt`, `.json`, `.md`) and do not require local `.RData` or `.xlsx` artifacts.
+
+## Client-facing notebook QA and render
+
+1. Scan source files for disallowed AI-signaling phrases:
+   `source("code/check_client_text.R")`
+2. Render all client-facing teaching notebooks:
+   `source("analysis/render_teaching_series.R")`
 
 ## Optional campaign-finance extension
 

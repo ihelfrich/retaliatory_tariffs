@@ -1,0 +1,242 @@
+---
+title: "Tariff Exposure Teaching Series"
+subtitle: "Session 2 - Measurement Reconstruction, NAICS Audit, and Mapping"
+author: "Ian Helfrich"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    code_folding: show
+    number_sections: false
+    df_print: paged
+    css: workbook_theme.css
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+```
+
+<div class="session-banner">
+<b>Session focus:</b> Verify that the exposure pipeline is internally coherent, catch NAICS problems early, and use maps as diagnostics.
+</div>
+
+## 1) Environment and Packages
+
+```{r env-check}
+if (file.exists("retaliatory-tariff.Rproj")) {
+  project_root <- "."
+} else if (file.exists("../retaliatory-tariff.Rproj")) {
+  project_root <- ".."
+} else {
+  stop("Could not find retaliatory-tariff.Rproj. Open this file inside the project folder.")
+}
+
+setwd(project_root)
+knitr::opts_knit$set(root.dir = normalizePath(getwd()))
+cat("Working directory:", normalizePath(getwd()), "\n")
+```
+
+```{r libraries}
+needed <- c(
+  "readr", "dplyr", "tidyr", "stringr", "ggplot2", "scales", "knitr", "sf", "tigris"
+)
+missing_pkgs <- needed[!vapply(needed, requireNamespace, quietly = TRUE, FUN.VALUE = logical(1))]
+if (length(missing_pkgs) > 0) {
+  stop("Install missing packages first:\n", paste0("install.packages('", missing_pkgs, "')", collapse = "\n"))
+}
+
+suppressPackageStartupMessages({
+  library(readr)
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+  library(ggplot2)
+  library(scales)
+  library(knitr)
+})
+```
+
+## 2) Quick Formula Refresher (with Color Anchors)
+
+<div class="math-legend">
+  <span class="pill c-share">Blue = local share</span>
+  <span class="pill c-shock">Orange = national tariff shock</span>
+  <span class="pill c-outcome">Green = county exposure output</span>
+</div>
+
+\[
+\color{DarkGreen}{\text{Exposure}_{ct}}
+=
+\sum_i
+\underbrace{\color{MidnightBlue}{\left(\frac{L_{cit}}{L_{ct}}\right)}}_{\color{MidnightBlue}{\text{share}}}
+\times
+\underbrace{\color{Sienna}{\left(X^{US}_{it} \times \tau_{it}\right)}}_{\color{Sienna}{\text{shock}}}
+\]
+
+## 3) Reconstruct Exposure From Components
+
+### Framing {.wb-framing}
+
+If we cannot rebuild the county-year exposure from industry-level components, we should not trust any downstream model.
+
+```{r load-main-data}
+panel <- read_csv(
+  "data/public/derived/county_tariff_exposure_panel_with_votes_2017_2023.csv",
+  show_col_types = FALSE
+) %>%
+  mutate(
+    county_fips = str_pad(as.character(county_fips), 5, pad = "0"),
+    year = as.integer(year)
+  )
+
+components <- read_csv(
+  "data/public/derived/county_industry_tariff_panel_2017_2023.csv",
+  show_col_types = FALSE
+) %>%
+  mutate(
+    county_fips = str_pad(as.character(county_fips), 5, pad = "0"),
+    year = as.integer(year)
+  )
+```
+
+```{r hoonah-rebuild}
+focus <- components %>%
+  filter(str_detect(county_name, "Hoonah-Angoon")) %>%
+  distinct(county_fips, county_name) %>%
+  slice(1)
+
+focus_fips <- focus$county_fips[[1]]
+focus_name <- focus$county_name[[1]]
+focus_year <- max(panel$year, na.rm = TRUE)
+
+cat("County:", focus_name, "| FIPS:", focus_fips, "| Year:", focus_year, "\n")
+
+focus_tbl <- components %>%
+  filter(county_fips == focus_fips, year == focus_year) %>%
+  mutate(reconstructed_component = emp_share * export_value_usd * tariff_rate_mean) %>%
+  select(
+    naics2c, emp_share, export_value_usd, tariff_rate_mean,
+    county_tariff_component_mean, reconstructed_component
+  ) %>%
+  arrange(desc(reconstructed_component))
+
+kable(slice_head(focus_tbl, n = 12), digits = 5)
+```
+
+```{r consistency-check}
+reconstructed <- components %>%
+  group_by(county_fips, year) %>%
+  summarise(reconstructed_exposure = sum(county_tariff_component_mean, na.rm = TRUE), .groups = "drop")
+
+consistency <- panel %>%
+  select(county_fips, year, county_tariff_exposure_mean) %>%
+  inner_join(reconstructed, by = c("county_fips", "year")) %>%
+  mutate(abs_diff = abs(county_tariff_exposure_mean - reconstructed_exposure))
+
+consistency %>%
+  summarise(
+    median_abs_diff = median(abs_diff, na.rm = TRUE),
+    max_abs_diff = max(abs_diff, na.rm = TRUE)
+  ) %>%
+  kable(digits = 6)
+```
+
+### Checkpoint {.wb-checkpoint}
+
+What does a very small `max_abs_diff` tell us about pipeline reliability?
+
+## 4) NAICS Audit Before Modeling
+
+```{r naics-audit}
+emp_panel <- read_csv(
+  "data/public/derived/county_industry_emp_share_2017_2023.csv",
+  show_col_types = FALSE
+) %>%
+  mutate(
+    county_fips = str_pad(as.character(county_fips), 5, pad = "0"),
+    naics2c = as.character(naics2c),
+    valid_naics = str_detect(naics2c, "^(00|[0-9]{2}|31-33|44-45|48-49|99)$"),
+    emp = as.numeric(emp),
+    emp_share = as.numeric(emp_share)
+  )
+
+naics_issues <- emp_panel %>%
+  mutate(
+    issue = case_when(
+      !valid_naics ~ "bad_naics_format",
+      is.na(emp) ~ "missing_emp",
+      is.na(emp_share) ~ "missing_emp_share",
+      !is.finite(emp_share) ~ "nonfinite_emp_share",
+      TRUE ~ "ok"
+    )
+  ) %>%
+  filter(issue != "ok") %>%
+  count(year, issue, naics2c, sort = TRUE, name = "rows")
+
+kable(slice_head(naics_issues, n = 25))
+```
+
+```{r write-naics-audit}
+dir.create("output/analysis/tables", recursive = TRUE, showWarnings = FALSE)
+write_csv(naics_issues, "output/analysis/tables/naics_problem_entries_session2.csv")
+cat("Wrote output/analysis/tables/naics_problem_entries_session2.csv\n")
+```
+
+## 5) Map Diagnostic (Static, Readable)
+
+### Framing {.wb-framing}
+
+A map should answer: where are high values, how smooth or clustered are they, and where are missing values?
+
+```{r map-exposure, fig.height=7, fig.width=12}
+latest_year <- max(panel$year, na.rm = TRUE)
+latest <- panel %>% filter(year == latest_year)
+
+options(tigris_use_cache = TRUE)
+
+counties_sf <- tigris::counties(cb = TRUE, year = 2023, class = "sf") %>%
+  sf::st_as_sf() %>%
+  select(GEOID, geometry)
+
+map_df <- counties_sf %>%
+  left_join(
+    latest %>%
+      transmute(GEOID = county_fips, exposure_per_worker = county_tariff_exposure_per_worker),
+    by = "GEOID"
+  ) %>%
+  filter(!str_sub(GEOID, 1, 2) %in% c("02", "15", "60", "66", "69", "72", "78"))
+
+ggplot(map_df) +
+  geom_sf(aes(fill = exposure_per_worker), color = NA) +
+  scale_fill_viridis_c(option = "C", trans = "log1p", na.value = "grey92") +
+  labs(
+    title = paste0("County tariff exposure per worker (", latest_year, ")"),
+    subtitle = "Log-scaled fill to keep the full distribution visible",
+    fill = "Exposure / worker"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid = element_blank())
+```
+
+### Teaching takeaway {.wb-takeaway}
+
+This map is a diagnostic layer, not the final claim. It tells us what patterns need explanation, not which explanation is automatically true.
+
+## 6) Session Wrap
+
+### Checkpoint {.wb-checkpoint}
+
+Before Session 3, be ready to explain:
+
+- How we validated the formula by reconstruction
+- Which NAICS issues appeared and why they matter
+- What the map revealed and what it did not prove
+
+<p class="small-note">Next session: regression ladder, uncertainty discipline, and optional campaign-finance controls.</p>

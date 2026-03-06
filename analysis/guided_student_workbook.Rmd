@@ -1,0 +1,465 @@
+---
+title: "County Tariff Exposure: Guided Student Workbook"
+author: "Ian Helfrich"
+date: "`r Sys.Date()`"
+output:
+  html_notebook:
+    toc: true
+    toc_depth: 3
+    css: workbook_theme.css
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+```
+
+## How To Use This Workbook
+
+This notebook is built for a discussion-first tutoring flow.
+
+The goal is not to sprint to coefficients. The goal is to understand what each object means, what each design choice buys us, and what each estimate can honestly claim.
+
+Suggested flow in session: read each section heading and short note out loud, run the chunk, then pause for the checkpoint question before moving on.
+
+## 0) Preflight: Make Sure We Are In The Project Root
+
+```{r preflight}
+if (file.exists("retaliatory-tariff.Rproj")) {
+  project_root <- "."
+} else if (file.exists("../retaliatory-tariff.Rproj")) {
+  project_root <- ".."
+} else {
+  stop("Could not find retaliatory-tariff.Rproj. Open this notebook inside the project folder.")
+}
+
+setwd(project_root)
+knitr::opts_knit$set(root.dir = normalizePath(getwd()))
+cat("Working directory set to:", normalizePath(getwd()), "\n")
+
+core_files <- c(
+  "data/data_cleaning_code/build_county_exposure.R",
+  "data/data_cleaning_code/clean_tariff_retaliation.R",
+  "code/overhaul_open_data_panel.R",
+  "data/public/derived/county_tariff_exposure_panel_with_votes_2017_2023.csv",
+  "data/public/derived/county_industry_tariff_panel_2017_2023.csv"
+)
+
+missing_core <- core_files[!file.exists(core_files)]
+if (length(missing_core) > 0) {
+  stop("Missing required files:\n", paste("-", missing_core, collapse = "\n"))
+}
+
+cat("Preflight check passed. Core files are present.\n")
+```
+
+```{r libraries}
+needed <- c(
+  "readr", "dplyr", "tidyr", "stringr", "ggplot2", "scales",
+  "knitr", "fixest", "modelsummary", "sf", "tigris"
+)
+
+missing_pkgs <- needed[!vapply(needed, requireNamespace, quietly = TRUE, FUN.VALUE = logical(1))]
+if (length(missing_pkgs) > 0) {
+  stop(
+    "Install missing packages first:\n",
+    paste("install.packages('", missing_pkgs, "')", collapse = "\n")
+  )
+}
+
+suppressPackageStartupMessages({
+  library(readr)
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+  library(ggplot2)
+  library(scales)
+  library(knitr)
+})
+```
+
+## 1) Start With Respect: What She Got Right
+
+Her first instinct was excellent.
+
+The skeleton of the measure was already in the Bartik/shift-share family:
+
+\[
+\text{Local Exposure} \approx \text{Shock Magnitude} \times \text{Local Reliance}
+\]
+
+The upgrade is not about replacing her idea. It is about improving the geography of the shock and the scaling of intensity.
+
+### Checkpoint {.wb-checkpoint}
+
+In your own words, what is the difference between replacing an idea and refining an idea?
+
+## 2) Diagnose The Original Pipeline (Without Throwing It Away)
+
+### 2.1 Look At The Legacy Script Inputs
+
+```{r legacy-quick-diagnosis}
+legacy_exports <- read_csv("data/tools/export_with_fips.csv", show_col_types = FALSE)
+
+legacy_fips <- legacy_exports %>%
+  mutate(fips_code = str_replace_all(fips_code, ";", ",")) %>%
+  separate_rows(fips_code, sep = ",") %>%
+  mutate(
+    fips_code = str_trim(fips_code),
+    county_fips = str_extract(fips_code, "[0-9]{5}")
+  )
+
+legacy_summary <- legacy_fips %>%
+  summarise(
+    raw_rows = n(),
+    unique_districts = n_distinct(District),
+    unique_counties = n_distinct(county_fips, na.rm = TRUE),
+    share_missing_fips = mean(is.na(county_fips))
+  )
+
+kable(legacy_summary, digits = 3)
+```
+
+### 2.2 Why This Matters
+
+If local assignment is based mainly on customs district geography, we risk confusing where goods exit with where goods are produced.
+
+That is the core "Laredo problem" in one line.
+
+### Checkpoint {.wb-checkpoint}
+
+Why can a port-heavy county look artificially exposed in this setup?
+
+## 3) Load The Upgraded County Panel
+
+```{r load-modern-panel}
+panel <- read_csv(
+  "data/public/derived/county_tariff_exposure_panel_with_votes_2017_2023.csv",
+  show_col_types = FALSE
+) %>%
+  mutate(
+    county_fips = str_pad(as.character(county_fips), 5, pad = "0"),
+    year = as.integer(year)
+  )
+
+panel %>%
+  summarise(
+    rows = n(),
+    years = n_distinct(year),
+    counties = n_distinct(county_fips),
+    min_year = min(year, na.rm = TRUE),
+    max_year = max(year, na.rm = TRUE)
+  ) %>%
+  kable()
+```
+
+```{r coverage-by-year}
+panel %>%
+  group_by(year) %>%
+  summarise(counties = n_distinct(county_fips), .groups = "drop") %>%
+  kable()
+```
+
+### 3.1 One Real Data Cleaning Note: State Name Gaps
+
+```{r state-missing-diagnosis}
+state_gap <- panel %>%
+  mutate(statefp = str_sub(county_fips, 1, 2)) %>%
+  summarise(
+    missing_state_name = sum(is.na(state_name) | state_name == ""),
+    share_missing = mean(is.na(state_name) | state_name == "")
+  )
+
+kable(state_gap, digits = 3)
+
+panel %>%
+  mutate(statefp = str_sub(county_fips, 1, 2)) %>%
+  filter(is.na(state_name) | state_name == "") %>%
+  count(statefp, sort = TRUE) %>%
+  kable()
+```
+
+This is worth teaching directly: a strong design still needs messy-data honesty.
+
+## 4) Reconstruct The Exposure Formula From Components
+
+Now we open the county-industry panel and verify the math at the row level.
+
+```{r load-components}
+components <- read_csv(
+  "data/public/derived/county_industry_tariff_panel_2017_2023.csv",
+  show_col_types = FALSE
+) %>%
+  mutate(
+    county_fips = str_pad(as.character(county_fips), 5, pad = "0"),
+    year = as.integer(year)
+  )
+
+components %>%
+  select(county_fips, county_name, year, naics2c, emp_share, export_value_usd,
+         tariff_rate_mean, county_tariff_component_mean) %>%
+  slice_head(n = 5) %>%
+  kable(digits = 4)
+```
+
+### 4.1 Example: Hoonah-Angoon Census Area
+
+```{r hoonah-example}
+focus_county <- components %>%
+  filter(str_detect(county_name, "Hoonah-Angoon")) %>%
+  distinct(county_fips, county_name) %>%
+  slice(1)
+
+focus_fips <- focus_county$county_fips[[1]]
+focus_name <- focus_county$county_name[[1]]
+focus_year <- max(panel$year, na.rm = TRUE)
+
+cat("Focus county:", focus_name, "| FIPS:", focus_fips, "| Year:", focus_year, "\n")
+
+focus_components <- components %>%
+  filter(county_fips == focus_fips, year == focus_year) %>%
+  mutate(
+    reconstructed_component = emp_share * export_value_usd * tariff_rate_mean
+  ) %>%
+  select(naics2c, emp_share, export_value_usd, tariff_rate_mean,
+         county_tariff_component_mean, reconstructed_component) %>%
+  arrange(desc(reconstructed_component))
+
+focus_components %>%
+  slice_head(n = 12) %>%
+  kable(digits = 5)
+```
+
+```{r aggregate-check}
+reconstructed <- components %>%
+  group_by(county_fips, year) %>%
+  summarise(reconstructed_exposure = sum(county_tariff_component_mean, na.rm = TRUE), .groups = "drop")
+
+comparison <- panel %>%
+  select(county_fips, year, county_tariff_exposure_mean) %>%
+  inner_join(reconstructed, by = c("county_fips", "year")) %>%
+  mutate(abs_diff = abs(county_tariff_exposure_mean - reconstructed_exposure))
+
+comparison %>%
+  summarise(
+    max_abs_diff = max(abs_diff, na.rm = TRUE),
+    median_abs_diff = median(abs_diff, na.rm = TRUE)
+  ) %>%
+  kable(digits = 6)
+```
+
+### Checkpoint {.wb-checkpoint}
+
+Why is this reconstruction test one of the most important trust checks in the whole project?
+
+## 5) NAICS Problem Scanner (Teaching + Debugging)
+
+```{r naics-problem-scan}
+emp_share_panel <- read_csv(
+  "data/public/derived/county_industry_emp_share_2017_2023.csv",
+  show_col_types = FALSE
+) %>%
+  mutate(
+    county_fips = str_pad(as.character(county_fips), 5, pad = "0"),
+    naics2c = as.character(naics2c),
+    valid_naics = str_detect(naics2c, "^(00|[0-9]{2}|31-33|44-45|48-49|99)$"),
+    emp = as.numeric(emp),
+    emp_share = as.numeric(emp_share)
+  )
+
+naics_issues <- emp_share_panel %>%
+  mutate(
+    issue_type = case_when(
+      !valid_naics ~ "bad_naics_format",
+      is.na(emp) ~ "missing_emp",
+      is.na(emp_share) ~ "missing_emp_share",
+      !is.finite(emp_share) ~ "nonfinite_emp_share",
+      TRUE ~ "ok"
+    )
+  ) %>%
+  filter(issue_type != "ok") %>%
+  count(year, issue_type, naics2c, sort = TRUE, name = "rows")
+
+naics_issues %>% slice_head(n = 25) %>% kable()
+```
+
+```{r write-naics-issues}
+dir.create("output/analysis/tables", recursive = TRUE, showWarnings = FALSE)
+write_csv(naics_issues, "output/analysis/tables/naics_problem_entries_guided.csv")
+cat("Wrote: output/analysis/tables/naics_problem_entries_guided.csv\n")
+```
+
+## 6) Exposure Levels vs Exposure Intensity
+
+This is the "Los Angeles problem" checkpoint: level and per-worker exposure should both be inspected.
+
+```{r level-vs-intensity}
+latest_year <- max(panel$year, na.rm = TRUE)
+latest <- panel %>% filter(year == latest_year)
+
+level_top <- latest %>%
+  arrange(desc(county_tariff_exposure_mean)) %>%
+  select(county_name, county_fips, county_tariff_exposure_mean,
+         county_tariff_exposure_per_worker, county_emp_total) %>%
+  slice_head(n = 15)
+
+intensity_top <- latest %>%
+  arrange(desc(county_tariff_exposure_per_worker)) %>%
+  select(county_name, county_fips, county_tariff_exposure_mean,
+         county_tariff_exposure_per_worker, county_emp_total) %>%
+  slice_head(n = 15)
+
+cat("Top 15 by level\n")
+kable(level_top, digits = 3)
+
+cat("\nTop 15 by per-worker intensity\n")
+kable(intensity_top, digits = 3)
+```
+
+### Checkpoint {.wb-checkpoint}
+
+Which counties jump in rank once we normalize by employment, and why?
+
+## 7) Visual Diagnostics In R (Static Maps)
+
+```{r map-data-prep}
+latest_map <- latest %>%
+  transmute(
+    GEOID = county_fips,
+    county_name,
+    exposure = county_tariff_exposure_mean,
+    exposure_per_worker = county_tariff_exposure_per_worker,
+    swingness_20
+  )
+```
+
+```{r map-exposure, fig.height=7, fig.width=12}
+options(tigris_use_cache = TRUE)
+
+counties_sf <- tigris::counties(cb = TRUE, year = 2023, class = "sf") %>%
+  sf::st_as_sf() %>%
+  select(GEOID, geometry)
+
+map_df <- counties_sf %>%
+  left_join(latest_map, by = "GEOID") %>%
+  filter(!str_sub(GEOID, 1, 2) %in% c("02", "15", "60", "66", "69", "72", "78"))
+
+p_map <- ggplot(map_df) +
+  geom_sf(aes(fill = exposure_per_worker), color = NA) +
+  scale_fill_viridis_c(option = "C", trans = "log1p", na.value = "grey92",
+                       labels = label_number(accuracy = 0.1)) +
+  labs(
+    title = paste0("County tariff exposure per worker (", latest_year, ")"),
+    subtitle = "Log-scaled fill to avoid outlier flattening",
+    fill = "Exposure / worker"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid = element_blank())
+
+p_map
+```
+
+## 8) Regression Ladder (HC1, FE, Clustered)
+
+```{r regression-ladder}
+suppressPackageStartupMessages({
+  library(fixest)
+  library(modelsummary)
+})
+
+reg_df <- panel %>%
+  mutate(
+    y = log1p(county_tariff_exposure_mean),
+    state_name = as.character(state_name)
+  ) %>%
+  filter(
+    is.finite(y),
+    !is.na(gop_share_20),
+    !is.na(swingness_20),
+    !is.na(tariffed_emp_share)
+  )
+
+m1 <- feols(y ~ gop_share_20 + swingness_20 + tariffed_emp_share,
+            data = reg_df,
+            vcov = "hetero")
+
+m2 <- feols(y ~ gop_share_20 + swingness_20 + tariffed_emp_share | state_name,
+            data = reg_df %>% filter(!is.na(state_name), state_name != ""),
+            vcov = "hetero")
+
+m3 <- feols(y ~ gop_share_20 + swingness_20 + tariffed_emp_share | state_name,
+            data = reg_df %>% filter(!is.na(state_name), state_name != ""),
+            vcov = ~state_name)
+
+modelsummary(
+  list(
+    "M1: HC1" = m1,
+    "M2: +State FE (HC1)" = m2,
+    "M3: +State FE (Clustered)" = m3
+  ),
+  stars = FALSE,
+  fmt = 3,
+  output = "markdown"
+)
+```
+
+### Checkpoint {.wb-checkpoint}
+
+Which coefficient is most stable across M1, M2, and M3? Which one is most sensitive?
+
+## 9) Interpretation Drill (Write Like A Researcher)
+
+Use this structure when she writes findings:
+
+1. **What changed in the model?** (specification and SE type)
+2. **What stayed stable?** (sign and rough magnitude)
+3. **What became less certain?** (wider intervals, clustering impact)
+4. **What can we claim?** (associational vs causal discipline)
+
+Write 3-5 sentences now using the last table.
+
+## 10) Optional Extension: Campaign Finance Layer
+
+```{r finance-extension, eval=FALSE}
+# Run this first if needed:
+# source("code/add_campaign_finance_county_measures.R")
+
+finance_panel <- read_csv(
+  "data/public/derived/county_tariff_panel_with_campaign_finance.csv",
+  show_col_types = FALSE
+)
+
+finance_panel %>%
+  select(year, county_fips, donations_total, spending_total,
+         donations_per_worker, spending_per_worker) %>%
+  slice_head(n = 10)
+```
+
+## 11) Teaching Exit Ticket
+
+Before ending the session, ask her to answer these out loud:
+
+1. What exactly is the shift in this project?
+2. What exactly is the share in this project?
+3. Why can customs-based geography mislead local exposure measurement?
+4. Why do we report both level and per-worker exposure?
+5. Why does clustered inference matter in county data?
+
+If she can answer those clearly, the project has moved from coding exercise to research design.
+
+## 12) Rebuild Commands (If You Need To Refresh Everything)
+
+```{r rebuild-commands, eval=FALSE}
+source("setup_project.R")
+source("code/overhaul_open_data_panel.R")
+source("code/validate_core_outputs.R")
+source("code/build_analysis_outputs.R")
+source("code/build_site_data.R")
+source("code/build_bivariate_maps.R")
+source("code/build_fixest_models.R")
+```

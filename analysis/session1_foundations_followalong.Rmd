@@ -1,0 +1,379 @@
+---
+title: "Tariff Exposure Teaching Series"
+subtitle: "Session 1 - Foundations, Intuition, and Data Structure"
+author: "Ian Helfrich"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    code_folding: show
+    number_sections: false
+    df_print: paged
+    css: workbook_theme.css
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+```
+
+<div class="session-banner">
+<b>Session focus:</b> Build the core mental model for tariff exposure, make the formula intuitive, and connect each R step to a research decision.
+</div>
+
+## 1) How To Run This Session
+
+### Framing {.wb-framing}
+
+This session is not about speed. It is about learning to think clearly about what each object means before we model anything.
+
+A good pace is:
+
+- Read the short framing paragraph out loud.
+- Run the code chunk.
+- Ask one checkpoint question before moving on.
+
+If you hit confusion, pause there. That is where learning happens.
+
+### Teaching takeaway {.wb-takeaway}
+
+The goal is not memorizing code. The goal is learning how to map an economic idea into a defensible data object.
+
+## 2) The Core Question And Why It Is A Good One
+
+### Framing {.wb-framing}
+
+Our question is:
+
+Did retaliatory tariffs hit politically salient places more than others?
+
+Why this is strong:
+
+- The policy shock is real and externally observed.
+- The geography is local and measurable.
+- The political outcomes are public and county-indexed.
+
+That gives us a clean empirical spine: shock, place, outcome.
+
+### Checkpoint {.wb-checkpoint}
+
+In plain language, what would count as evidence for this question, and what would count as evidence against it?
+
+## 3) Vocabulary You Need Before Touching The Formula
+
+### Framing {.wb-framing}
+
+A lot of confusion comes from vocabulary drift. Pin the terms down first.
+
+- <span class="c-shock">Shock</span>: a policy or market event that changes exposure conditions from outside the county.
+- <span class="c-share">Share</span>: how concentrated local employment is in a given industry.
+- <span class="c-outcome">Exposure</span>: predicted local vulnerability implied by shock x share.
+- `county_fips`: a 5-digit county ID (state + county code).
+- `NAICS`: industry classification labels.
+
+Once these are stable, the code becomes much easier to read.
+
+## 4) The Formula, Underbraces, And Intuition
+
+<div class="math-legend">
+  <span class="pill c-share">Blue = local share term</span>
+  <span class="pill c-shock">Orange = national shock term</span>
+  <span class="pill c-outcome">Green = county exposure output</span>
+</div>
+
+\[
+\color{DarkGreen}{\text{Exposure}_{ct}}
+=
+\sum_i
+\underbrace{\color{MidnightBlue}{\left(\frac{L_{cit}}{L_{ct}}\right)}}_{\color{MidnightBlue}{\text{local industry share}}}
+\times
+\underbrace{\color{Sienna}{\left(X^{US}_{it} \times \tau_{it}\right)}}_{\color{Sienna}{\text{national tariff-exposed shock}}}
+\]
+
+Read this as a sentence:
+
+County exposure equals the sum, over industries, of local workforce reliance times national tariff pressure in that same industry.
+
+What each piece is doing:
+
+- <span class="c-share">Blue share term</span>: asks, "How much does this county rely on industry \(i\)?"
+- <span class="c-shock">Orange shock term</span>: asks, "How hard is industry \(i\) being hit nationally by tariffs?"
+- <span class="c-outcome">Green output</span>: aggregates those interactions into one county-year score.
+
+### Teaching takeaway {.wb-takeaway}
+
+The formula is not mystical. It is a weighted average idea where the weights come from local employment structure.
+
+### Checkpoint {.wb-checkpoint}
+
+If two counties face the same national shock vector, what makes their exposure scores different?
+
+## 5) One Tiny Numerical Example (So The Formula Feels Real)
+
+### Framing {.wb-framing}
+
+Before real data, build trust with a tiny hand-checkable example.
+
+```{r toy-county-example}
+library(dplyr)
+library(tibble)
+library(knitr)
+
+toy_county <- tibble(
+  industry = c("Soy", "Machinery", "Chemicals"),
+  local_emp_share = c(0.20, 0.35, 0.45),
+  national_exports_usd = c(8e9, 14e9, 10e9),
+  tariff_rate = c(0.25, 0.10, 0.05)
+) %>%
+  mutate(
+    national_shock = national_exports_usd * tariff_rate,
+    contribution = local_emp_share * national_shock
+  )
+
+toy_county %>%
+  mutate(across(c(local_emp_share, tariff_rate), round, 3)) %>%
+  kable()
+```
+
+```{r toy-county-total}
+toy_county %>%
+  summarise(
+    exposure_total = sum(contribution),
+    share_sum = sum(local_emp_share)
+  ) %>%
+  kable(digits = 2)
+```
+
+Interpretation:
+
+- `share_sum` should be near 1 in a clean complete setup.
+- `exposure_total` is the county score implied by its industrial mix and national tariff pressure.
+
+This is exactly the same logic as the full pipeline, just miniaturized.
+
+### Checkpoint {.wb-checkpoint}
+
+Which industry contributes the most in this toy table, and is it because of local share, national shock size, or both?
+
+## 6) Two Intuition Drills That Prevent Bad Inference
+
+### 6.1 The Laredo Problem (Geography)
+
+### Framing {.wb-framing}
+
+Production location and border-exit location can differ sharply. If we treat them as the same, we misallocate exposure.
+
+```{r laredo-toy}
+toy_geo <- tibble(
+  county = c("Detroit area", "Laredo area"),
+  manufacturing_workers = c(180000, 12000),
+  border_exit_value_usd = c(2000000000, 12000000000)
+)
+
+toy_geo %>% kable()
+```
+
+How to teach this table:
+
+- Laredo can have very high exit value because goods cross there.
+- Detroit can have much higher production-side labor exposure because goods are produced there.
+- Exit nodes and production nodes are different economic objects.
+
+### 6.2 The Los Angeles Problem (Scale)
+
+### Framing {.wb-framing}
+
+Total dollar exposure can overstate impact in very large labor markets and understate intensity in smaller ones.
+
+\[
+\underbrace{\color{DarkGreen}{\text{Exposure per worker}_{ct}}}_{\color{DarkGreen}{\text{intensity measure}}}
+=
+\frac{
+\underbrace{\color{MidnightBlue}{\text{Exposure}_{ct}}}_{\color{MidnightBlue}{\text{total burden}}}
+}{
+\underbrace{\color{Sienna}{L_{ct}}}_{\color{Sienna}{\text{county employment base}}}
+}
+\]
+
+```{r scale-toy}
+scale_toy <- tibble(
+  county = c("Small county", "Large county"),
+  total_exposure = c(5e7, 5e7),
+  county_employment = c(25000, 900000)
+) %>%
+  mutate(exposure_per_worker = total_exposure / county_employment)
+
+scale_toy %>% kable(digits = 2)
+```
+
+Same total exposure, very different per-worker intensity.
+
+### Checkpoint {.wb-checkpoint}
+
+When writing results, how would you explain a county that is high in levels but not high in per-worker terms?
+
+## 7) R Setup: Why We Check Paths And Packages First
+
+### Framing {.wb-framing}
+
+Most reproducibility failures are environment failures, not statistical failures.
+
+```{r env-check}
+if (file.exists("retaliatory-tariff.Rproj")) {
+  project_root <- "."
+} else if (file.exists("../retaliatory-tariff.Rproj")) {
+  project_root <- ".."
+} else {
+  stop("Could not find retaliatory-tariff.Rproj. Open this file inside the project folder.")
+}
+
+setwd(project_root)
+knitr::opts_knit$set(root.dir = normalizePath(getwd()))
+cat("Working directory:", normalizePath(getwd()), "\n")
+```
+
+How to explain this chunk live:
+
+- We look for the project file first so relative paths are stable.
+- `setwd(project_root)` ensures subsequent file reads point to the same place for anyone running this.
+- `opts_knit$set(root.dir=...)` keeps knitting behavior consistent.
+
+```{r libraries}
+needed <- c("readr", "dplyr", "tidyr", "stringr", "ggplot2", "scales", "knitr")
+missing_pkgs <- needed[!vapply(needed, requireNamespace, quietly = TRUE, FUN.VALUE = logical(1))]
+if (length(missing_pkgs) > 0) {
+  stop("Install missing packages first:\n", paste0("install.packages('", missing_pkgs, "')", collapse = "\n"))
+}
+
+suppressPackageStartupMessages({
+  library(readr)
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+  library(ggplot2)
+  library(scales)
+  library(knitr)
+})
+```
+
+How to explain this chunk live:
+
+- `needed` declares dependencies explicitly.
+- `requireNamespace(..., quietly = TRUE)` checks availability without loading everything.
+- `stop(...)` fails early with a useful message instead of failing later in a confusing way.
+
+### Teaching takeaway {.wb-takeaway}
+
+Failing early is a kindness to future-you.
+
+## 8) Load The County Panel And Read It Like A Researcher
+
+```{r load-panel}
+panel <- read_csv(
+  "data/public/derived/county_tariff_exposure_panel_with_votes_2017_2023.csv",
+  show_col_types = FALSE
+) %>%
+  mutate(
+    county_fips = stringr::str_pad(as.character(county_fips), 5, pad = "0"),
+    year = as.integer(year)
+  )
+
+panel %>%
+  summarise(
+    rows = n(),
+    years = n_distinct(year),
+    counties = n_distinct(county_fips),
+    min_year = min(year, na.rm = TRUE),
+    max_year = max(year, na.rm = TRUE)
+  ) %>%
+  kable()
+```
+
+What this is doing technically:
+
+- `read_csv(...)` imports the panel object.
+- `str_pad(...)` standardizes FIPS codes to 5 digits, preserving leading zeros.
+- `as.integer(year)` makes year explicit numeric time index.
+- `summarise(...)` gives a quick integrity read: row count, temporal span, and cross-sectional coverage.
+
+```{r panel-coverage}
+panel %>%
+  count(year, name = "county_rows") %>%
+  kable()
+```
+
+How to discuss this table:
+
+- We check whether coverage is stable across years.
+- Sharp drops may indicate pipeline gaps, not economic effects.
+- Data coverage diagnostics are part of causal discipline.
+
+### Checkpoint {.wb-checkpoint}
+
+Why can unstable county coverage across years distort comparisons, even before any regression?
+
+## 9) Level Vs Intensity In The Real Panel
+
+```{r level-vs-intensity-quick}
+latest_year <- max(panel$year, na.rm = TRUE)
+latest <- panel %>% filter(year == latest_year)
+
+level_top <- latest %>%
+  arrange(desc(county_tariff_exposure_mean)) %>%
+  select(county_name, county_fips, county_tariff_exposure_mean, county_tariff_exposure_per_worker) %>%
+  slice_head(n = 10)
+
+intensity_top <- latest %>%
+  arrange(desc(county_tariff_exposure_per_worker)) %>%
+  select(county_name, county_fips, county_tariff_exposure_mean, county_tariff_exposure_per_worker) %>%
+  slice_head(n = 10)
+
+kable(level_top, digits = 3, caption = "Top 10 by exposure level")
+kable(intensity_top, digits = 3, caption = "Top 10 by exposure per worker")
+```
+
+```{r overlap-check}
+overlap_n <- dplyr::inner_join(
+  level_top %>% select(county_fips),
+  intensity_top %>% select(county_fips),
+  by = "county_fips"
+) %>%
+  nrow()
+
+tibble(overlap_top10 = overlap_n) %>% kable()
+```
+
+How to teach this section:
+
+- If overlap is low, scale is materially changing ranking logic.
+- If overlap is high, level and intensity are aligned for top counties.
+- Neither result is "good" or "bad" by default; each tells you something about distribution.
+
+### Teaching takeaway {.wb-takeaway}
+
+This is where students usually move from "I ran code" to "I understand the empirical object."
+
+## 10) Session 1 Close-Out Script
+
+### Framing {.wb-framing}
+
+If you want a clean closing script for this session, use this:
+
+"Today we defined the target object, separated geography mistakes from valid measurement, and learned why scaling changes interpretation. We also built the habit of checking data structure before modeling."
+
+### Checkpoint {.wb-checkpoint}
+
+Before Session 2, make sure these can be explained without notes:
+
+- What each term in the shift-share formula does
+- Why the Laredo problem is a geography identification issue
+- Why per-worker exposure is an intensity metric, not a replacement for levels
+- Why early environment checks protect empirical integrity
+
+<p class="small-note">Next session: rebuild exposure from components, run the NAICS problem scan, and turn maps into diagnostics rather than decoration.</p>

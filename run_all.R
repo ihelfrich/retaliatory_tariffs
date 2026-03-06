@@ -1,5 +1,6 @@
 args <- commandArgs(trailingOnly = TRUE)
 check_only <- "--check-only" %in% args
+build_teaching <- "--build-teaching" %in% args
 
 resolve_project_root <- function() {
   if (file.exists("README.md") && file.exists("setup_project.R")) {
@@ -47,8 +48,13 @@ core_scripts <- c(
 )
 
 missing_scripts <- core_scripts[!file.exists(core_scripts)]
+qa_scripts <- c("code/check_client_text.R", "analysis/render_teaching_series.R")
+missing_qa_scripts <- qa_scripts[!file.exists(qa_scripts)]
 if (length(missing_scripts) > 0) {
   stop("Missing required scripts: ", paste(missing_scripts, collapse = ", "))
+}
+if (length(missing_qa_scripts) > 0) {
+  stop("Missing QA scripts: ", paste(missing_qa_scripts, collapse = ", "))
 }
 
 if (check_only) {
@@ -60,6 +66,9 @@ for (script_path in core_scripts) {
   message("Running ", script_path)
   source(script_path)
 }
+
+message("Running code/check_client_text.R")
+source("code/check_client_text.R")
 
 if (file.exists("analysis/report.qmd") &&
     requireNamespace("quarto", quietly = TRUE) &&
@@ -79,6 +88,17 @@ if (has_fec_key || has_fec_cache) {
   source("code/add_campaign_finance_county_measures.R")
 } else {
   message("Skipping campaign-finance extension (no FEC_API_KEY and no cached FEC ZIP files).")
+}
+
+if (build_teaching) {
+  if (requireNamespace("rmarkdown", quietly = TRUE)) {
+    message("Rendering teaching notebook HTML files")
+    source("analysis/render_teaching_series.R")
+  } else {
+    message("Skipping teaching notebook render (--build-teaching set, but rmarkdown is unavailable).")
+  }
+} else {
+  message("Skipping teaching notebook render (use --build-teaching to include it).")
 }
 
 message("Pipeline finished.")

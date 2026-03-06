@@ -1,0 +1,272 @@
+---
+title: "Tariff Exposure Teaching Series"
+subtitle: "Session 3 - Regression Ladder, Uncertainty, and Optional Finance Controls"
+author: "Ian Helfrich"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    code_folding: show
+    number_sections: false
+    df_print: paged
+    css: workbook_theme.css
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+```
+
+<div class="session-banner">
+<b>Session focus:</b> Run a model ladder the right way: start simple, add structure, and report uncertainty honestly.
+</div>
+
+## 1) Environment and Packages
+
+```{r env-check}
+if (file.exists("retaliatory-tariff.Rproj")) {
+  project_root <- "."
+} else if (file.exists("../retaliatory-tariff.Rproj")) {
+  project_root <- ".."
+} else {
+  stop("Could not find retaliatory-tariff.Rproj. Open this file inside the project folder.")
+}
+
+setwd(project_root)
+knitr::opts_knit$set(root.dir = normalizePath(getwd()))
+cat("Working directory:", normalizePath(getwd()), "\n")
+```
+
+```{r libraries}
+needed <- c("readr", "dplyr", "stringr", "knitr", "fixest", "modelsummary")
+missing_pkgs <- needed[!vapply(needed, requireNamespace, quietly = TRUE, FUN.VALUE = logical(1))]
+if (length(missing_pkgs) > 0) {
+  stop("Install missing packages first:\n", paste0("install.packages('", missing_pkgs, "')", collapse = "\n"))
+}
+
+suppressPackageStartupMessages({
+  library(readr)
+  library(dplyr)
+  library(stringr)
+  library(knitr)
+  library(fixest)
+  library(modelsummary)
+})
+```
+
+## 2) Model Structure Refresher
+
+<div class="math-legend">
+  <span class="pill c-outcome">Green = dependent variable</span>
+  <span class="pill c-share">Blue = political/context predictors</span>
+  <span class="pill c-structure">Purple = fixed effects / clustering structure</span>
+</div>
+
+\[
+\color{DarkGreen}{\log(1+\text{Exposure}_{ct})}
+=
+\beta_1 \color{MidnightBlue}{\text{GOP Share}_{c}}
++
+\beta_2 \color{MidnightBlue}{\text{Swingness}_{c}}
++
+\beta_3 \color{MidnightBlue}{\text{Tariffed Emp Share}_{ct}}
++
+\color{DarkSlateBlue}{\text{state fixed effects}}
++
+\varepsilon_{ct}
+\]
+
+### Framing {.wb-framing}
+
+The point of the ladder is comparison across assumptions, not fishing for one model that looks best.
+
+## 3) Load Data and Build Regression Frame
+
+```{r load-panel}
+panel <- read_csv(
+  "data/public/derived/county_tariff_exposure_panel_with_votes_2017_2023.csv",
+  show_col_types = FALSE
+) %>%
+  mutate(
+    county_fips = str_pad(as.character(county_fips), 5, pad = "0"),
+    year = as.integer(year),
+    state_name = as.character(state_name),
+    y = log1p(county_tariff_exposure_mean)
+  )
+
+reg_df <- panel %>%
+  filter(
+    is.finite(y),
+    !is.na(gop_share_20),
+    !is.na(swingness_20),
+    !is.na(tariffed_emp_share)
+  )
+
+reg_df %>%
+  summarise(
+    rows = n(),
+    counties = n_distinct(county_fips),
+    years = n_distinct(year),
+    states_with_labels = n_distinct(state_name[!is.na(state_name) & state_name != ""])
+  ) %>%
+  kable()
+```
+
+## 4) Regression Ladder
+
+```{r regression-ladder}
+m1 <- feols(
+  y ~ gop_share_20 + swingness_20 + tariffed_emp_share,
+  data = reg_df,
+  vcov = "hetero"
+)
+
+m2 <- feols(
+  y ~ gop_share_20 + swingness_20 + tariffed_emp_share | state_name,
+  data = reg_df %>% filter(!is.na(state_name), state_name != ""),
+  vcov = "hetero"
+)
+
+m3 <- feols(
+  y ~ gop_share_20 + swingness_20 + tariffed_emp_share | state_name,
+  data = reg_df %>% filter(!is.na(state_name), state_name != ""),
+  vcov = ~state_name
+)
+
+modelsummary(
+  list(
+    "M1 HC1" = m1,
+    "M2 + State FE (HC1)" = m2,
+    "M3 + State FE (Clustered)" = m3
+  ),
+  stars = FALSE,
+  fmt = 3,
+  output = "markdown"
+)
+```
+
+### Teaching takeaway {.wb-takeaway}
+
+When confidence intervals widen under clustered SE, that is usually a realism correction, not a failure.
+
+### Checkpoint {.wb-checkpoint}
+
+Across M1 to M3, did signs change, magnitudes change, or uncertainty change most?
+
+## 5) Optional Layer: Campaign Finance Controls
+
+### Framing {.wb-framing}
+
+This is an extension layer. It should pressure-test the main relationship, not replace the research question.
+
+```{r finance-extension-check}
+finance_panel_path <- "data/public/derived/county_tariff_panel_with_campaign_finance.csv"
+
+if (!file.exists(finance_panel_path)) {
+  cat(
+    "Campaign-finance extension data is not present yet.\n\n",
+    "To build it:\n",
+    "1) source('code/add_campaign_finance_county_measures.R')\n",
+    "2) Set FEC_API_KEY, or provide cached ZIP files in data/public/raw/\n",
+    "3) Re-knit this file\n"
+  )
+} else {
+  finance_panel <- read_csv(finance_panel_path, show_col_types = FALSE) %>%
+    mutate(
+      county_fips = str_pad(as.character(county_fips), 5, pad = "0"),
+      year = as.integer(year)
+    )
+
+  needed <- c(
+    "county_fips", "year", "county_tariff_exposure_mean", "gop_share_20",
+    "swingness_20", "tariffed_emp_share", "state_name", "donations_total", "spending_total"
+  )
+  missing_needed <- setdiff(needed, names(finance_panel))
+
+  if (length(missing_needed) > 0) {
+    cat(
+      "Finance panel is present, but required columns are missing:\n",
+      paste0(" - ", missing_needed, collapse = "\n"),
+      "\nRebuild with code/add_campaign_finance_county_measures.R\n"
+    )
+  } else {
+    latest_finance_year <- max(finance_panel$year, na.rm = TRUE)
+    fin_latest <- finance_panel %>% filter(year == latest_finance_year)
+
+    fin_diag <- fin_latest %>%
+      summarise(
+        year = latest_finance_year,
+        counties = n_distinct(county_fips),
+        counties_with_donations = sum(donations_total > 0, na.rm = TRUE),
+        counties_with_spending = sum(spending_total > 0, na.rm = TRUE),
+        median_donations = median(donations_total, na.rm = TRUE),
+        median_spending = median(spending_total, na.rm = TRUE)
+      )
+
+    kable(fin_diag, digits = 2, caption = "Campaign-finance coverage (latest year)")
+
+    reg_fin <- fin_latest %>%
+      mutate(
+        y = log1p(county_tariff_exposure_mean),
+        ln_donations = log1p(donations_total),
+        ln_spending = log1p(spending_total)
+      ) %>%
+      filter(
+        is.finite(y),
+        is.finite(ln_donations),
+        is.finite(ln_spending),
+        !is.na(gop_share_20),
+        !is.na(swingness_20),
+        !is.na(tariffed_emp_share),
+        !is.na(state_name),
+        state_name != ""
+      )
+
+    m_base <- feols(
+      y ~ gop_share_20 + swingness_20 + tariffed_emp_share | state_name,
+      data = reg_fin,
+      vcov = ~state_name
+    )
+
+    m_fin <- feols(
+      y ~ gop_share_20 + swingness_20 + tariffed_emp_share + ln_donations + ln_spending | state_name,
+      data = reg_fin,
+      vcov = ~state_name
+    )
+
+    modelsummary(
+      list(
+        "Baseline FE + clustered" = m_base,
+        "+ Donations + spending controls" = m_fin
+      ),
+      stars = FALSE,
+      fmt = 3,
+      output = "markdown"
+    )
+  }
+}
+```
+
+## 6) Session Wrap and Writing Discipline
+
+### Framing {.wb-framing}
+
+Use this sequence every time you write findings:
+
+- What changed in the specification
+- What stayed stable in sign and rough size
+- Where uncertainty widened
+- What can be claimed as association
+- What cannot be claimed as causal effect
+
+### Checkpoint {.wb-checkpoint}
+
+Draft a 4-6 sentence summary using M3 as the anchor model and M1/M2 as robustness context.
+
+<p class="small-note">After this session, the next step is to package selected figures/tables into the client-facing narrative deck.</p>
